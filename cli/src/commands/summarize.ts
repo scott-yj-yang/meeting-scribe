@@ -14,9 +14,8 @@ async function summarizeMeeting(
   const client = new APIClient();
   const config = getConfig();
 
-  // Fetch meeting data
-  const meeting = await client.getMeeting(meetingId);
-  const transcript: string = meeting.transcript ?? "";
+  // Fetch formatted markdown via the export endpoint
+  const transcript = await client.exportMeeting(meetingId);
 
   if (!transcript) {
     console.log(chalk.yellow(`No transcript for meeting ${meetingId}, skipping.`));
