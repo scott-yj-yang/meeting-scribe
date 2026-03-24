@@ -12,10 +12,10 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
     private var recognitionTask: SFSpeechRecognitionTask?
     private var recordingStartTime = Date()
 
-    private var allUtterances: [(text: String, time: TimeInterval)] = []
-    private var currentPartialText: String = ""
-    private var lastTextUpdateTime: Date = Date()
-    private var saveTimer: Timer?
+    // All saved text chunks (one per recognition session, ~1 min each)
+    private var savedChunks: [(text: String, time: TimeInterval)] = []
+    // Current session's cumulative text (grows as recognizer returns partials)
+    private var currentSessionText: String = ""
     private var bufferCount = 0
     private var isRestarting = false
     private var isActive = false
@@ -23,8 +23,8 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
     func setup() async throws {
         recordingStartTime = Date()
         segments.removeAll()
-        allUtterances.removeAll()
-        currentPartialText = ""
+        savedChunks.removeAll()
+        currentSessionText = ""
         liveText = ""
         bufferCount = 0
         isRestarting = false
@@ -40,7 +40,7 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
             throw TranscriptionError.recognizerUnavailable
         }
 
-        startNewRecognitionRequest(recognizer: recognizer)
+        startNewSession(recognizer: recognizer)
         print("[Transcription] Live transcription started (on-device: \(recognizer.supportsOnDeviceRecognition))")
     }
 
@@ -59,29 +59,29 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
     /// Call when recording stops
     func finalize() {
         isActive = false
-        saveTimer?.invalidate()
-        saveTimer = nil
 
-        // Save any remaining partial text
-        savePartialText()
+        // Save current session's text
+        saveCurrentSession()
 
-        // Convert all utterances to segments
+        // Convert all chunks to segments
         segments.removeAll()
         var lastEnd: TimeInterval = 0
-        for utterance in allUtterances {
+        for chunk in savedChunks {
             let segment = TranscriptSegment(
                 speaker: "Speaker",
-                text: utterance.text,
+                text: chunk.text,
                 startTime: lastEnd,
-                endTime: utterance.time
+                endTime: chunk.time
             )
             segments.append(segment)
-            lastEnd = utterance.time
+            lastEnd = chunk.time
         }
 
-        print("[Transcription] Finalized \(segments.count) segments from \(allUtterances.count) utterances")
+        print("[Transcription] Finalized \(segments.count) segments from \(savedChunks.count) chunks")
+        for (i, seg) in segments.enumerated() {
+            print("[Transcription]   #\(i+1): \"\(seg.text.prefix(100))\"")
+        }
 
-        // Clean up recognition
         recognitionTask?.cancel()
         recognitionTask = nil
         recognitionRequest?.endAudio()
@@ -90,37 +90,35 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
 
     func reset() {
         isActive = false
-        saveTimer?.invalidate()
-        saveTimer = nil
         recognitionTask?.cancel()
         recognitionTask = nil
         recognitionRequest?.endAudio()
         recognitionRequest = nil
         recognizer = nil
         segments.removeAll()
-        allUtterances.removeAll()
-        currentPartialText = ""
+        savedChunks.removeAll()
+        currentSessionText = ""
         liveText = ""
         bufferCount = 0
     }
 
     // MARK: - Private
 
-    private func savePartialText() {
-        let text = currentPartialText.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func saveCurrentSession() {
+        let text = currentSessionText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
 
         let elapsed = Date().timeIntervalSince(recordingStartTime)
-        allUtterances.append((text: text, time: elapsed))
-        print("[Transcription] Saved utterance #\(allUtterances.count): \"\(text.prefix(100))\"")
-        currentPartialText = ""
+        savedChunks.append((text: text, time: elapsed))
+        print("[Transcription] Saved chunk #\(savedChunks.count): \"\(text.prefix(100))\"")
+        currentSessionText = ""
         liveText = ""
     }
 
-    private func startNewRecognitionRequest(recognizer: SFSpeechRecognizer) {
+    private func startNewSession(recognizer: SFSpeechRecognizer) {
         guard isActive else { return }
 
-        // Clean up old request
+        // Clean up old session
         recognitionRequest?.endAudio()
         recognitionTask?.cancel()
 
@@ -139,48 +137,48 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
                 if let result = result {
                     let text = result.bestTranscription.formattedString
                     if !text.isEmpty {
-                        self.currentPartialText = text
-                        self.liveText = text
-                        self.lastTextUpdateTime = Date()
-
-                        // Auto-save after 2 seconds of no new text (pause between sentences)
-                        self.saveTimer?.invalidate()
-                        self.saveTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
-                            Task { @MainActor [weak self] in
-                                self?.savePartialText()
-                            }
-                        }
+                        // This is CUMULATIVE — contains ALL text from session start
+                        self.currentSessionText = text
+                        self.liveText = self.fullTranscriptPreview()
                     }
 
                     if result.isFinal {
-                        self.saveTimer?.invalidate()
-                        self.savePartialText()
+                        self.saveCurrentSession()
                         self.scheduleRestart()
                     }
                 }
 
                 if error != nil {
-                    self.saveTimer?.invalidate()
-                    self.savePartialText()
+                    self.saveCurrentSession()
                     self.scheduleRestart()
                 }
             }
         }
     }
 
-    /// Debounced restart to prevent cascading restarts
+    /// Show all saved text + current live text
+    private func fullTranscriptPreview() -> String {
+        let saved = savedChunks.map(\.text).joined(separator: " ")
+        if saved.isEmpty {
+            return currentSessionText
+        }
+        if currentSessionText.isEmpty {
+            return saved
+        }
+        return saved + " " + currentSessionText
+    }
+
     private func scheduleRestart() {
         guard isActive, !isRestarting else { return }
         isRestarting = true
 
-        // Small delay to let any cascading callbacks settle
         Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(200))
+            try? await Task.sleep(for: .milliseconds(300))
             guard self.isActive else { return }
             self.isRestarting = false
 
             if let recognizer = self.recognizer, recognizer.isAvailable {
-                self.startNewRecognitionRequest(recognizer: recognizer)
+                self.startNewSession(recognizer: recognizer)
             }
         }
     }
