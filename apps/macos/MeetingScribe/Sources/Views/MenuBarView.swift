@@ -40,6 +40,28 @@ struct MenuBarView: View {
                 // Main view
                 if appState.isRecording {
                     RecordingIndicator(duration: appState.recordingDuration)
+
+                    // Live transcription text
+                    if !appState.transcriptionManager.liveText.isEmpty {
+                        ScrollView {
+                            Text(appState.transcriptionManager.liveText)
+                                .font(.system(.caption, design: .rounded))
+                                .foregroundStyle(.primary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(maxHeight: 80)
+                        .padding(8)
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(6)
+                    }
+
+                    // Segment count
+                    if !appState.transcriptionManager.segments.isEmpty {
+                        Text("\(appState.transcriptionManager.segments.count) segments saved")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+
                     Button("Stop Recording") {
                         appState.toggleRecording()
                     }

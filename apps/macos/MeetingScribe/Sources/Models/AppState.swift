@@ -16,8 +16,8 @@ class AppState: ObservableObject {
 
     private var timer: Timer?
     private var recordingStartDate: Date?
-    private let audioCaptureManager = AudioCaptureManager()
-    private let transcriptionManager = TranscriptionManager()
+    let audioCaptureManager = AudioCaptureManager()
+    let transcriptionManager = TranscriptionManager()
     private let uploadQueue = UploadQueue()
 
     // Called from button — schedules async work without crashing SwiftUI
