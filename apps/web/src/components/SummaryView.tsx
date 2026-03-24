@@ -49,10 +49,57 @@ export default function SummaryView({ content, meetingId }: SummaryViewProps) {
     }
   }, [meetingId]);
 
+  const [notionLoading, setNotionLoading] = useState(false);
+  const [notionUrl, setNotionUrl] = useState<string | null>(null);
+  const [notionError, setNotionError] = useState<string | null>(null);
+
+  const handleSendToNotion = useCallback(async () => {
+    setNotionLoading(true);
+    setNotionError(null);
+    try {
+      const res = await fetch(`/api/meetings/${meetingId}/notion`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to sync to Notion");
+      }
+      setNotionUrl(data.url);
+    } catch (err) {
+      setNotionError(err instanceof Error ? err.message : "An error occurred");
+    } finally {
+      setNotionLoading(false);
+    }
+  }, [meetingId]);
+
   if (content) {
     return (
-      <div className="prose prose-sm max-w-none">
-        <ReactMarkdown>{content}</ReactMarkdown>
+      <div>
+        <div className="mb-4 flex items-center gap-3">
+          <button
+            onClick={handleSendToNotion}
+            disabled={notionLoading}
+            className="inline-flex items-center rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+          >
+            {notionLoading ? "Sending..." : "Send to Notion"}
+          </button>
+          {notionUrl && (
+            <a
+              href={notionUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-blue-600 hover:underline"
+            >
+              View in Notion
+            </a>
+          )}
+          {notionError && (
+            <span className="text-xs text-red-600">{notionError}</span>
+          )}
+        </div>
+        <div className="prose prose-sm max-w-none">
+          <ReactMarkdown>{content}</ReactMarkdown>
+        </div>
       </div>
     );
   }
