@@ -1,5 +1,6 @@
 import { execFile } from "child_process";
 import { join } from "path";
+import { prisma } from "@/lib/prisma";
 
 const jobs = new Map<string, { status: "running" | "completed" | "failed"; result?: string; error?: string }>();
 
@@ -22,11 +23,36 @@ export function startSummarizeJob(meetingId: string): void {
       cwd: projectRoot,
       env: { ...process.env, MEETINGSCRIBE_PROMPTS_DIR: promptsDir },
     },
-    (error, stdout, stderr) => {
+    async (error, stdout, stderr) => {
       if (error) {
         jobs.set(meetingId, { status: "failed", error: stderr || error.message });
       } else {
-        jobs.set(meetingId, { status: "completed", result: stdout });
+        // Save summary to database
+        try {
+          // Strip the "Summarizing meeting..." prefix line from meetingctl output
+          const summaryContent = stdout
+            .replace(/^Summarizing meeting.*\n/, "")
+            .trim();
+
+          await prisma.summary.upsert({
+            where: { meetingId },
+            create: {
+              meetingId,
+              content: summaryContent,
+              promptUsed: "summarize",
+            },
+            update: {
+              content: summaryContent,
+              promptUsed: "summarize",
+              generatedAt: new Date(),
+            },
+          });
+
+          jobs.set(meetingId, { status: "completed", result: summaryContent });
+        } catch (dbError) {
+          const errMsg = dbError instanceof Error ? dbError.message : String(dbError);
+          jobs.set(meetingId, { status: "failed", error: `Summary generated but failed to save: ${errMsg}` });
+        }
       }
     }
   );
