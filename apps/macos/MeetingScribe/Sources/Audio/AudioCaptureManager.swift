@@ -1,5 +1,5 @@
 import AVFoundation
-import ScreenCaptureKit
+@preconcurrency import ScreenCaptureKit
 
 @MainActor
 class AudioCaptureManager: ObservableObject {
@@ -7,29 +7,55 @@ class AudioCaptureManager: ObservableObject {
     private let systemCapture = SystemAudioCapture()
 
     @Published var isCapturing = false
+    @Published var captureMode: CaptureMode = .none
 
     var onMicAudio: (@Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void)?
     var onSystemAudio: (@Sendable (CMSampleBuffer) -> Void)?
 
-    func startCapture() async throws {
+    enum CaptureMode {
+        case none
+        case micOnly
+        case micAndSystem
+    }
+
+    func startCapture() async {
+        // Always start mic capture
         let micHandler = onMicAudio
         micCapture.onAudioBuffer = { buffer, time in
             micHandler?(buffer, time)
         }
-        try micCapture.start()
 
+        do {
+            try micCapture.start()
+        } catch {
+            print("Mic capture failed: \(error)")
+            return
+        }
+
+        // Try system audio — if it fails, continue with mic only
         let sysHandler = onSystemAudio
         systemCapture.onAudioBuffer = { sampleBuffer in
             sysHandler?(sampleBuffer)
         }
-        try await systemCapture.start()
+
+        do {
+            try await systemCapture.start()
+            captureMode = .micAndSystem
+            print("Recording: microphone + system audio")
+        } catch {
+            captureMode = .micOnly
+            print("System audio unavailable (\(error.localizedDescription)). Recording microphone only.")
+        }
 
         isCapturing = true
     }
 
     func stopCapture() async {
         micCapture.stop()
-        await systemCapture.stop()
+        if captureMode == .micAndSystem {
+            await systemCapture.stop()
+        }
         isCapturing = false
+        captureMode = .none
     }
 }

@@ -8,32 +8,23 @@ struct MenuBarView: View {
             if appState.isRecording {
                 RecordingIndicator(duration: appState.recordingDuration)
                 Button("Stop Recording") {
-                    appState.stopRecording()
+                    appState.toggleRecording()
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.red)
             } else {
                 Button("Start Recording") {
-                    appState.startRecording()
+                    appState.toggleRecording()
                 }
                 .buttonStyle(.borderedProminent)
             }
 
-            // Error message
-            if let error = appState.errorMessage {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    if appState.showPermissionAlert {
-                        Button("Open Privacy Settings") {
-                            appState.openPrivacySettings()
-                        }
-                        .font(.caption)
-                    }
-                }
+            // Status / error message
+            if let message = appState.statusMessage {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(message.contains("failed") || message.contains("Failed") ? .red : .secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Divider()
