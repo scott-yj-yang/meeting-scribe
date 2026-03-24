@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import UserNotifications
+@preconcurrency import ScreenCaptureKit
 
 @MainActor
 class AppState: ObservableObject {
@@ -8,6 +9,8 @@ class AppState: ObservableObject {
     @Published var recordingDuration: TimeInterval = 0
     @Published var recentRecordings: [Recording] = []
     @Published var serverStatus: ServerStatus = .unknown
+    @Published var errorMessage: String? = nil
+    @Published var showPermissionAlert = false
 
     @AppStorage("serverURL") var serverURL = "http://localhost:3000"
     @AppStorage("outputDirectory") var outputDirectory = "~/MeetingScribe"
@@ -20,14 +23,32 @@ class AppState: ObservableObject {
     private let uploadQueue = UploadQueue()
 
     func startRecording() {
-        Task {
+        errorMessage = nil
+
+        Task { @MainActor in
+            // Check ScreenCaptureKit permission first
+            do {
+                _ = try await SCShareableContent.current
+            } catch {
+                self.errorMessage = "Screen & System Audio Recording permission required.\nGo to System Settings > Privacy & Security > Screen & System Audio Recording and add this app."
+                self.showPermissionAlert = true
+                return
+            }
+
             do {
                 try await transcriptionManager.setup()
-                audioCaptureManager.onMicAudio = { [weak self] buffer, time in
-                    self?.transcriptionManager.processAudioBuffer(buffer, speaker: "Local")
+                let transcriber = transcriptionManager
+                audioCaptureManager.onMicAudio = { buffer, time in
+                    nonisolated(unsafe) let buffer = buffer
+                    Task { @MainActor in
+                        transcriber.processAudioBuffer(buffer, speaker: "Local")
+                    }
                 }
-                audioCaptureManager.onSystemAudio = { [weak self] sampleBuffer in
-                    self?.transcriptionManager.processSampleBuffer(sampleBuffer, speaker: "Remote")
+                audioCaptureManager.onSystemAudio = { sampleBuffer in
+                    nonisolated(unsafe) let sampleBuffer = sampleBuffer
+                    Task { @MainActor in
+                        transcriber.processSampleBuffer(sampleBuffer, speaker: "Remote")
+                    }
                 }
                 try await audioCaptureManager.startCapture()
 
@@ -40,13 +61,14 @@ class AppState: ObservableObject {
                     }
                 }
             } catch {
+                self.errorMessage = "Failed to start recording: \(error.localizedDescription)"
                 print("Failed to start recording: \(error)")
             }
         }
     }
 
     func stopRecording() {
-        Task {
+        Task { @MainActor in
             await audioCaptureManager.stopCapture()
             timer?.invalidate()
             timer = nil
@@ -113,6 +135,12 @@ class AppState: ObservableObject {
             content.body = "\(title) — \(MarkdownFormatter.formatDuration(recordingDuration))"
             let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
             try? await UNUserNotificationCenter.current().add(request)
+        }
+    }
+
+    func openPrivacySettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+            NSWorkspace.shared.open(url)
         }
     }
 

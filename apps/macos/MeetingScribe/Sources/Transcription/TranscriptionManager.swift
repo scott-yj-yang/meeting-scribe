@@ -9,7 +9,8 @@ import AVFoundation
 // The implementation below is a placeholder that captures the intended data flow.
 // It should be updated once the actual API is confirmed.
 
-class TranscriptionManager: ObservableObject {
+@MainActor
+final class TranscriptionManager: ObservableObject, Sendable {
     @Published var segments: [TranscriptSegment] = []
 
     private var recordingStartTime = Date()

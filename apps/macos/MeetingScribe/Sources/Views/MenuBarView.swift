@@ -19,6 +19,23 @@ struct MenuBarView: View {
                 .buttonStyle(.borderedProminent)
             }
 
+            // Error message
+            if let error = appState.errorMessage {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if appState.showPermissionAlert {
+                        Button("Open Privacy Settings") {
+                            appState.openPrivacySettings()
+                        }
+                        .font(.caption)
+                    }
+                }
+            }
+
             Divider()
 
             HStack {

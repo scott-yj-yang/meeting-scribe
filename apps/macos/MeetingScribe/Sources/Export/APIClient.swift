@@ -1,6 +1,6 @@
 import Foundation
 
-class MeetingAPIClient {
+final class MeetingAPIClient: Sendable {
     private let serverURL: String
     private let apiKey: String
 
