@@ -26,4 +26,7 @@ final class MicrophoneCapture: @unchecked Sendable {
     }
 
     var isRunning: Bool { isCapturing }
+    var format: AVAudioFormat? {
+        isCapturing ? engine.inputNode.outputFormat(forBus: 0) : nil
+    }
 }

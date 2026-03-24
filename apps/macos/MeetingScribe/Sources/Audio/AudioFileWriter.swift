@@ -4,7 +4,7 @@ import Foundation
 /// Records audio buffers to a WAV file for post-recording whisper.cpp transcription.
 /// The macOS app does live transcription via SpeechTranscriber (lower accuracy, real-time)
 /// and saves the raw audio so whisper.cpp can produce a higher-accuracy final transcript.
-class AudioFileWriter {
+final class AudioFileWriter: @unchecked Sendable {
     private var audioFile: AVAudioFile?
     private let outputURL: URL
 

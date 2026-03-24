@@ -8,6 +8,7 @@ class AudioCaptureManager: ObservableObject {
 
     @Published var isCapturing = false
     @Published var captureMode: CaptureMode = .none
+    var micFormat: AVAudioFormat? { micCapture.format }
 
     var onMicAudio: (@Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void)?
     var onSystemAudio: (@Sendable (CMSampleBuffer) -> Void)?

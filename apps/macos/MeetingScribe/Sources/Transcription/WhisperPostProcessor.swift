@@ -7,7 +7,7 @@ import Foundation
 ///   - During recording: SpeechTranscriber provides live (lower accuracy) transcript
 ///   - After recording: whisper.cpp produces final (higher accuracy) transcript with diarization
 ///   - The final transcript is what gets uploaded to the web app
-class WhisperPostProcessor {
+final class WhisperPostProcessor: @unchecked Sendable {
 
     struct TranscriptionResult {
         let text: String

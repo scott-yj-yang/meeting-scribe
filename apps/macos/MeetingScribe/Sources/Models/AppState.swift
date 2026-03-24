@@ -12,20 +12,20 @@ class AppState: ObservableObject {
 
     @AppStorage("serverURL") var serverURL = "http://localhost:3000"
     @AppStorage("outputDirectory") var outputDirectory = "~/MeetingScribe"
-    @AppStorage("saveAudio") var saveAudio = false
+    @AppStorage("saveAudio") var saveAudio = true
 
     private var timer: Timer?
     private var recordingStartDate: Date?
     let audioCaptureManager = AudioCaptureManager()
     let transcriptionManager = TranscriptionManager()
     private let uploadQueue = UploadQueue()
+    private var audioFileWriter: AudioFileWriter?
+    private let whisperProcessor = WhisperPostProcessor()
 
-    // Called from button — schedules async work without crashing SwiftUI
     func toggleRecording() {
         if isRecording {
             stopRecording()
         } else {
-            // Update UI immediately, do async work in background
             statusMessage = "Starting..."
             Task.detached { [weak self] in
                 await self?.doStartRecording()
@@ -34,11 +34,23 @@ class AppState: ObservableObject {
     }
 
     private func doStartRecording() async {
+        let startDate = Date()
+
         do {
+            // Start live transcription (UI display only — whisper.cpp does the real transcript)
             try await transcriptionManager.setup()
             let transcriber = transcriptionManager
+
+            // Set up audio file writer for whisper.cpp
+            let title = "Meeting \(startDate.formatted(.dateTime.month().day().hour().minute()))"
+            let writer = AudioFileWriter(directory: outputDirectory, title: title, date: startDate)
+            self.audioFileWriter = writer
+
             audioCaptureManager.onMicAudio = { buffer, time in
                 nonisolated(unsafe) let buffer = buffer
+                // Save audio to file for whisper.cpp
+                writer.write(buffer: buffer)
+                // Feed to live transcription (UI only)
                 Task { @MainActor in
                     transcriber.processAudioBuffer(buffer, speaker: "Local")
                 }
@@ -52,7 +64,13 @@ class AppState: ObservableObject {
 
             await audioCaptureManager.startCapture()
 
-            recordingStartDate = Date()
+            // Start audio file writer
+            if let format = audioCaptureManager.micFormat {
+                try writer.start(format: format)
+                print("[Recording] Audio file: \(writer.fileURL.path)")
+            }
+
+            recordingStartDate = startDate
             isRecording = true
             recordingDuration = 0
             statusMessage = nil
@@ -64,7 +82,7 @@ class AppState: ObservableObject {
             }
         } catch {
             statusMessage = "Recording failed: \(error.localizedDescription)"
-            print("Failed to start recording: \(error)")
+            print("[Recording] Failed: \(error)")
         }
     }
 
@@ -80,36 +98,54 @@ class AppState: ObservableObject {
         timer = nil
         isRecording = false
 
-        // Finalize transcription — saves any remaining partial text as segments
-        transcriptionManager.finalize()
+        // Stop live transcription (it was just for UI)
+        transcriptionManager.reset()
+
+        // Stop audio file writer
+        guard let writer = audioFileWriter else { return }
+        let audioURL = writer.stop()
+        audioFileWriter = nil
 
         guard let startDate = recordingStartDate else { return }
         let title = "Meeting \(startDate.formatted(.dateTime.month().day().hour().minute()))"
 
-        print("[Recording] Stopped. \(transcriptionManager.segments.count) transcript segments.")
+        print("[Recording] Stopped. Audio: \(audioURL.path)")
+        statusMessage = "Transcribing with whisper.cpp..."
+
+        // Run whisper.cpp for accurate, complete transcript
+        var segments: [TranscriptSegment] = []
+        if whisperProcessor.isAvailable {
+            do {
+                print("[Whisper] Transcribing...")
+                let result = try await whisperProcessor.transcribe(audioFile: audioURL)
+                segments = result.segments
+                print("[Whisper] Done — \(segments.count) segments")
+            } catch {
+                print("[Whisper] Failed: \(error.localizedDescription)")
+                statusMessage = "Transcription failed. Audio saved."
+            }
+        } else {
+            print("[Whisper] Not installed. Run: brew install whisper-cpp")
+            statusMessage = "Install whisper-cpp for transcription"
+        }
 
         let markdown = MarkdownFormatter.format(
             title: title,
             date: startDate,
             duration: recordingDuration,
             meetingType: nil,
-            audioSources: ["system", "microphone"],
-            segments: transcriptionManager.segments
+            audioSources: audioCaptureManager.captureMode == .micAndSystem
+                ? ["system", "microphone"] : ["microphone"],
+            segments: segments
         )
 
-        // Save locally
+        // Save markdown locally
         if let fileURL = try? LocalStorage.save(
-            markdown: markdown,
-            title: title,
-            date: startDate,
-            directory: outputDirectory
+            markdown: markdown, title: title, date: startDate, directory: outputDirectory
         ) {
             let recording = Recording(
-                id: UUID(),
-                title: title,
-                date: startDate,
-                duration: recordingDuration,
-                filePath: fileURL.path
+                id: UUID(), title: title, date: startDate,
+                duration: recordingDuration, filePath: fileURL.path
             )
             recentRecordings.insert(recording, at: 0)
             if recentRecordings.count > 5 { recentRecordings.removeLast() }
@@ -119,28 +155,30 @@ class AppState: ObservableObject {
         let client = MeetingAPIClient(serverURL: serverURL)
         do {
             _ = try await client.uploadMeeting(
-                title: title,
-                date: startDate,
+                title: title, date: startDate,
                 duration: Int(recordingDuration),
-                audioSources: ["system", "microphone"],
+                audioSources: ["microphone"],
                 meetingType: nil,
                 rawMarkdown: markdown,
-                segments: transcriptionManager.segments
+                segments: segments
             )
-            statusMessage = "Meeting saved and uploaded"
+            statusMessage = "Meeting saved (\(segments.count) segments)"
         } catch {
             await uploadQueue.enqueue(UploadQueue.PendingUpload(
                 filePath: recentRecordings.first?.filePath ?? "",
-                title: title,
-                date: startDate,
+                title: title, date: startDate,
                 duration: Int(recordingDuration),
-                audioSources: ["system", "microphone"],
+                audioSources: ["microphone"],
                 meetingType: nil
             ))
             statusMessage = "Saved locally (server offline)"
         }
 
-        transcriptionManager.reset()
+        let content = UNMutableNotificationContent()
+        content.title = "Meeting Saved"
+        content.body = "\(title) — \(segments.count) segments"
+        let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        try? await UNUserNotificationCenter.current().add(req)
     }
 
     func checkServerStatus() {
