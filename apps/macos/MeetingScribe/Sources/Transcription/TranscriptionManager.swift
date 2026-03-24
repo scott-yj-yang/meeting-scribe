@@ -53,58 +53,46 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
 
                 if let result = result {
                     let text = result.bestTranscription.formattedString
-                    self.liveText = text
+                    if !text.isEmpty {
+                        print("[Transcription] Got text: \"\(text.prefix(80))\" (final: \(result.isFinal))")
+                        self.liveText = text
+                    }
 
-                    // When we get a final result (end of utterance), save as a segment
                     if result.isFinal {
-                        let elapsed = Date().timeIntervalSince(self.recordingStartTime)
-                        let segment = TranscriptSegment(
-                            speaker: "Speaker",
-                            text: text,
-                            startTime: self.lastSegmentEnd,
-                            endTime: elapsed
-                        )
-                        self.segments.append(segment)
-                        self.lastSegmentEnd = elapsed
-                        self.liveText = ""
-
-                        // Start a new recognition request for the next utterance
+                        // Save whatever text we accumulated (liveText has the last non-empty partial)
+                        self.saveCurrentText()
                         self.restartRecognition()
                     }
                 }
 
                 if let error = error {
                     let nsError = error as NSError
-                    // Error 1110 = "no speech detected" — normal, just restart
-                    // Error 216 = "request was canceled" — normal during restart
-                    if nsError.code != 1110 && nsError.code != 216 {
-                        print("Recognition error: \(error.localizedDescription)")
+                    if nsError.code != 216 {
+                        print("[Transcription] Recognition ended: \(error.localizedDescription)")
                     }
-                    // Save any partial text as a segment
-                    if !self.liveText.isEmpty {
-                        let elapsed = Date().timeIntervalSince(self.recordingStartTime)
-                        let segment = TranscriptSegment(
-                            speaker: "Speaker",
-                            text: self.liveText,
-                            startTime: self.lastSegmentEnd,
-                            endTime: elapsed
-                        )
-                        self.segments.append(segment)
-                        self.lastSegmentEnd = elapsed
-                        self.liveText = ""
-                    }
-
-                    // Restart recognition (SFSpeechRecognizer has a ~1 min limit per request)
+                    // Save any accumulated text before restarting
+                    self.saveCurrentText()
                     self.restartRecognition()
                 }
             }
         }
 
-        print("Live transcription started (on-device: \(recognizer.supportsOnDeviceRecognition))")
+        print("[Transcription] Live transcription started (on-device: \(recognizer.supportsOnDeviceRecognition), locale: \(recognizer.locale))")
+        print("[Transcription] Auth status: \(SFSpeechRecognizer.authorizationStatus().rawValue)")
+        print("[Transcription] Recognizer available: \(recognizer.isAvailable)")
     }
+
+    private var bufferCount = 0
 
     /// Feed microphone audio buffers to the recognizer
     func processAudioBuffer(_ buffer: AVAudioPCMBuffer, speaker: String) {
+        bufferCount += 1
+        if bufferCount == 1 {
+            print("[Transcription] Receiving audio buffers (format: \(buffer.format))")
+        }
+        if bufferCount % 100 == 0 {
+            print("[Transcription] Processed \(bufferCount) buffers, segments so far: \(segments.count)")
+        }
         recognitionRequest?.append(buffer)
     }
 
@@ -125,6 +113,24 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
         segments.removeAll()
         liveText = ""
         lastSegmentEnd = 0
+    }
+
+    /// Save current partial text as a transcript segment
+    private func saveCurrentText() {
+        let text = liveText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+
+        let elapsed = Date().timeIntervalSince(recordingStartTime)
+        let segment = TranscriptSegment(
+            speaker: "Speaker",
+            text: text,
+            startTime: lastSegmentEnd,
+            endTime: elapsed
+        )
+        segments.append(segment)
+        lastSegmentEnd = elapsed
+        liveText = ""
+        print("[Transcription] Saved segment #\(segments.count): \"\(text.prefix(80))\"")
     }
 
     /// Restart recognition (needed because Apple limits each request to ~1 minute)
@@ -150,40 +156,22 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
                 guard let self = self else { return }
 
                 if let result = result {
-                    self.liveText = result.bestTranscription.formattedString
-
+                    let text = result.bestTranscription.formattedString
+                    if !text.isEmpty {
+                        self.liveText = text
+                    }
                     if result.isFinal {
-                        let elapsed = Date().timeIntervalSince(self.recordingStartTime)
-                        let segment = TranscriptSegment(
-                            speaker: "Speaker",
-                            text: result.bestTranscription.formattedString,
-                            startTime: self.lastSegmentEnd,
-                            endTime: elapsed
-                        )
-                        self.segments.append(segment)
-                        self.lastSegmentEnd = elapsed
-                        self.liveText = ""
+                        self.saveCurrentText()
                         self.restartRecognition()
                     }
                 }
 
                 if let error = error {
                     let nsError = error as NSError
-                    if nsError.code != 1110 && nsError.code != 216 {
-                        print("Recognition error: \(error.localizedDescription)")
+                    if nsError.code != 216 {
+                        print("[Transcription] Recognition ended: \(error.localizedDescription)")
                     }
-                    if !self.liveText.isEmpty {
-                        let elapsed = Date().timeIntervalSince(self.recordingStartTime)
-                        let segment = TranscriptSegment(
-                            speaker: "Speaker",
-                            text: self.liveText,
-                            startTime: self.lastSegmentEnd,
-                            endTime: elapsed
-                        )
-                        self.segments.append(segment)
-                        self.lastSegmentEnd = elapsed
-                        self.liveText = ""
-                    }
+                    self.saveCurrentText()
                     self.restartRecognition()
                 }
             }
