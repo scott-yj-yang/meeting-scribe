@@ -11,22 +11,23 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private var recordingStartTime = Date()
-    private var lastSegmentEnd: TimeInterval = 0
+
+    // Accumulate all recognized utterances
+    private var allUtterances: [(text: String, time: TimeInterval)] = []
+    private var currentPartialText: String = ""
+    private var bufferCount = 0
 
     func setup() async throws {
         recordingStartTime = Date()
         segments.removeAll()
+        allUtterances.removeAll()
+        currentPartialText = ""
         liveText = ""
+        bufferCount = 0
 
-        // Check current auth status (don't request — it crashes in Swift 6 due to TCC callback threading)
         let status = SFSpeechRecognizer.authorizationStatus()
-        if status == .notDetermined {
-            // First time: user needs to grant permission via System Settings
-            print("Speech recognition permission not yet granted.")
-            print("Go to: System Settings > Privacy & Security > Speech Recognition")
-            throw TranscriptionError.notAuthorized
-        }
         guard status == .authorized else {
+            print("[Transcription] Not authorized (status: \(status.rawValue))")
             throw TranscriptionError.notAuthorized
         }
 
@@ -35,73 +36,53 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
             throw TranscriptionError.recognizerUnavailable
         }
 
-        // Enable on-device recognition for privacy and speed
-        let request = SFSpeechAudioBufferRecognitionRequest()
-        request.shouldReportPartialResults = true
-        if recognizer.supportsOnDeviceRecognition {
-            request.requiresOnDeviceRecognition = true
-        }
-        // Allow long-form audio (meetings)
-        request.addsPunctuation = true
+        startNewRecognitionRequest(recognizer: recognizer)
 
-        self.recognitionRequest = request
-
-        // Start recognition task
-        recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
-
-                if let result = result {
-                    let text = result.bestTranscription.formattedString
-                    if !text.isEmpty {
-                        print("[Transcription] Got text: \"\(text.prefix(80))\" (final: \(result.isFinal))")
-                        self.liveText = text
-                    }
-
-                    if result.isFinal {
-                        // Save whatever text we accumulated (liveText has the last non-empty partial)
-                        self.saveCurrentText()
-                        self.restartRecognition()
-                    }
-                }
-
-                if let error = error {
-                    let nsError = error as NSError
-                    if nsError.code != 216 {
-                        print("[Transcription] Recognition ended: \(error.localizedDescription)")
-                    }
-                    // Save any accumulated text before restarting
-                    self.saveCurrentText()
-                    self.restartRecognition()
-                }
-            }
-        }
-
-        print("[Transcription] Live transcription started (on-device: \(recognizer.supportsOnDeviceRecognition), locale: \(recognizer.locale))")
-        print("[Transcription] Auth status: \(SFSpeechRecognizer.authorizationStatus().rawValue)")
-        print("[Transcription] Recognizer available: \(recognizer.isAvailable)")
+        print("[Transcription] Live transcription started (on-device: \(recognizer.supportsOnDeviceRecognition))")
     }
 
-    private var bufferCount = 0
-
-    /// Feed microphone audio buffers to the recognizer
     func processAudioBuffer(_ buffer: AVAudioPCMBuffer, speaker: String) {
         bufferCount += 1
         if bufferCount == 1 {
-            print("[Transcription] Receiving audio buffers (format: \(buffer.format))")
-        }
-        if bufferCount % 100 == 0 {
-            print("[Transcription] Processed \(bufferCount) buffers, segments so far: \(segments.count)")
+            print("[Transcription] Receiving audio buffers")
         }
         recognitionRequest?.append(buffer)
     }
 
-    /// System audio (CMSampleBuffer) — convert to PCM and feed to recognizer
     func processSampleBuffer(_ sampleBuffer: CMSampleBuffer, speaker: String) {
-        // For now, system audio is not fed to SFSpeechRecognizer
-        // (it expects a single audio stream; mixing would require AVAudioMixerNode)
-        // System audio transcription is handled by whisper.cpp post-processing
         _ = sampleBuffer
+    }
+
+    /// Call this when recording stops to finalize all segments
+    func finalize() {
+        // Save any remaining partial text
+        if !currentPartialText.isEmpty {
+            let elapsed = Date().timeIntervalSince(recordingStartTime)
+            allUtterances.append((text: currentPartialText, time: elapsed))
+            currentPartialText = ""
+        }
+
+        // Convert all utterances to segments
+        segments.removeAll()
+        var lastEnd: TimeInterval = 0
+        for utterance in allUtterances {
+            let segment = TranscriptSegment(
+                speaker: "Speaker",
+                text: utterance.text,
+                startTime: lastEnd,
+                endTime: utterance.time
+            )
+            segments.append(segment)
+            lastEnd = utterance.time
+        }
+
+        print("[Transcription] Finalized \(segments.count) segments from \(allUtterances.count) utterances")
+
+        // Stop recognition
+        recognitionTask?.cancel()
+        recognitionTask = nil
+        recognitionRequest?.endAudio()
+        recognitionRequest = nil
     }
 
     func reset() {
@@ -111,69 +92,73 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
         recognitionRequest = nil
         recognizer = nil
         segments.removeAll()
+        allUtterances.removeAll()
+        currentPartialText = ""
         liveText = ""
-        lastSegmentEnd = 0
+        bufferCount = 0
     }
 
-    /// Save current partial text as a transcript segment
-    private func saveCurrentText() {
-        let text = liveText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+    // MARK: - Private
 
-        let elapsed = Date().timeIntervalSince(recordingStartTime)
-        let segment = TranscriptSegment(
-            speaker: "Speaker",
-            text: text,
-            startTime: lastSegmentEnd,
-            endTime: elapsed
-        )
-        segments.append(segment)
-        lastSegmentEnd = elapsed
-        liveText = ""
-        print("[Transcription] Saved segment #\(segments.count): \"\(text.prefix(80))\"")
-    }
-
-    /// Restart recognition (needed because Apple limits each request to ~1 minute)
-    private func restartRecognition() {
-        guard let recognizer = recognizer, recognizer.isAvailable else { return }
-
-        // End the current request
-        recognitionRequest?.endAudio()
-        recognitionTask?.cancel()
-
-        // Create a new request
+    private func startNewRecognitionRequest(recognizer: SFSpeechRecognizer) {
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
         if recognizer.supportsOnDeviceRecognition {
             request.requiresOnDeviceRecognition = true
         }
         request.addsPunctuation = true
-
         self.recognitionRequest = request
 
         recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
+                self.handleRecognitionResult(result: result, error: error)
+            }
+        }
+    }
 
-                if let result = result {
-                    let text = result.bestTranscription.formattedString
-                    if !text.isEmpty {
-                        self.liveText = text
-                    }
-                    if result.isFinal {
-                        self.saveCurrentText()
-                        self.restartRecognition()
-                    }
-                }
+    private func handleRecognitionResult(result: SFSpeechRecognitionResult?, error: Error?) {
+        if let result = result {
+            let text = result.bestTranscription.formattedString
+            if !text.isEmpty {
+                currentPartialText = text
+                liveText = text
+            }
 
-                if let error = error {
-                    let nsError = error as NSError
-                    if nsError.code != 216 {
-                        print("[Transcription] Recognition ended: \(error.localizedDescription)")
-                    }
-                    self.saveCurrentText()
-                    self.restartRecognition()
+            if result.isFinal {
+                // Utterance complete — save it
+                if !currentPartialText.isEmpty {
+                    let elapsed = Date().timeIntervalSince(recordingStartTime)
+                    allUtterances.append((text: currentPartialText, time: elapsed))
+                    print("[Transcription] Saved utterance #\(allUtterances.count): \"\(currentPartialText.prefix(80))\"")
+                    currentPartialText = ""
+                    liveText = ""
                 }
+                // Restart for next utterance
+                if let recognizer = recognizer, recognizer.isAvailable {
+                    startNewRecognitionRequest(recognizer: recognizer)
+                }
+            }
+        }
+
+        if let error = error {
+            let nsError = error as NSError
+            // Save current partial text before restarting
+            if !currentPartialText.isEmpty {
+                let elapsed = Date().timeIntervalSince(recordingStartTime)
+                allUtterances.append((text: currentPartialText, time: elapsed))
+                print("[Transcription] Saved utterance #\(allUtterances.count) (on pause): \"\(currentPartialText.prefix(80))\"")
+                currentPartialText = ""
+                liveText = ""
+            }
+
+            if nsError.code != 216 { // 216 = canceled (normal during restart)
+                print("[Transcription] Recognition cycle ended: \(error.localizedDescription)")
+            }
+
+            // Restart recognition (SFSpeechRecognizer has ~1 min limit per request)
+            if let recognizer = recognizer, recognizer.isAvailable {
+                startNewRecognitionRequest(recognizer: recognizer)
             }
         }
     }
@@ -184,8 +169,8 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
 
         var errorDescription: String? {
             switch self {
-            case .notAuthorized: return "Speech recognition not authorized. Check System Settings > Privacy & Security > Speech Recognition."
-            case .recognizerUnavailable: return "Speech recognizer is not available."
+            case .notAuthorized: return "Speech recognition not authorized."
+            case .recognizerUnavailable: return "Speech recognizer not available."
             }
         }
     }

@@ -80,8 +80,13 @@ class AppState: ObservableObject {
         timer = nil
         isRecording = false
 
+        // Finalize transcription — saves any remaining partial text as segments
+        transcriptionManager.finalize()
+
         guard let startDate = recordingStartDate else { return }
         let title = "Meeting \(startDate.formatted(.dateTime.month().day().hour().minute()))"
+
+        print("[Recording] Stopped. \(transcriptionManager.segments.count) transcript segments.")
 
         let markdown = MarkdownFormatter.format(
             title: title,
