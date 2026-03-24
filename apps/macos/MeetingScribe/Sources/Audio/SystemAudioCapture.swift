@@ -1,10 +1,10 @@
 import ScreenCaptureKit
 import AVFoundation
 
-class SystemAudioCapture: NSObject, SCStreamDelegate, SCStreamOutput {
+final class SystemAudioCapture: NSObject, @unchecked Sendable, SCStreamDelegate, SCStreamOutput {
     private var stream: SCStream?
     private var isCapturing = false
-    var onAudioBuffer: ((CMSampleBuffer) -> Void)?
+    var onAudioBuffer: (@Sendable (CMSampleBuffer) -> Void)?
 
     func start() async throws {
         let content = try await SCShareableContent.current
@@ -34,13 +34,13 @@ class SystemAudioCapture: NSObject, SCStreamDelegate, SCStreamOutput {
         isCapturing = false
     }
 
-    func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
+    nonisolated func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .audio else { return }
         onAudioBuffer?(sampleBuffer)
     }
 
-    func stream(_ stream: SCStream, didStopWithError error: Error) {
-        isCapturing = false
+    nonisolated func stream(_ stream: SCStream, didStopWithError error: Error) {
+        // Handle stream error
     }
 
     var isRunning: Bool { isCapturing }

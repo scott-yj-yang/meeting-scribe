@@ -1,37 +1,35 @@
 import AVFoundation
 import ScreenCaptureKit
 
+@MainActor
 class AudioCaptureManager: ObservableObject {
     private let micCapture = MicrophoneCapture()
     private let systemCapture = SystemAudioCapture()
 
     @Published var isCapturing = false
 
-    var onMicAudio: ((AVAudioPCMBuffer, AVAudioTime) -> Void)?
-    var onSystemAudio: ((CMSampleBuffer) -> Void)?
+    var onMicAudio: (@Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void)?
+    var onSystemAudio: (@Sendable (CMSampleBuffer) -> Void)?
 
     func startCapture() async throws {
-        micCapture.onAudioBuffer = { [weak self] buffer, time in
-            self?.onMicAudio?(buffer, time)
+        let micHandler = onMicAudio
+        micCapture.onAudioBuffer = { buffer, time in
+            micHandler?(buffer, time)
         }
         try micCapture.start()
 
-        systemCapture.onAudioBuffer = { [weak self] sampleBuffer in
-            self?.onSystemAudio?(sampleBuffer)
+        let sysHandler = onSystemAudio
+        systemCapture.onAudioBuffer = { sampleBuffer in
+            sysHandler?(sampleBuffer)
         }
         try await systemCapture.start()
 
-        await MainActor.run {
-            isCapturing = true
-        }
+        isCapturing = true
     }
 
     func stopCapture() async {
         micCapture.stop()
         await systemCapture.stop()
-
-        await MainActor.run {
-            isCapturing = false
-        }
+        isCapturing = false
     }
 }
