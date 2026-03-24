@@ -18,17 +18,14 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
         segments.removeAll()
         liveText = ""
 
-        // Request speech recognition authorization on the main thread
-        let status = await withCheckedContinuation { (continuation: CheckedContinuation<SFSpeechRecognizerAuthorizationStatus, Never>) in
-            DispatchQueue.main.async {
-                SFSpeechRecognizer.requestAuthorization { authStatus in
-                    DispatchQueue.main.async {
-                        continuation.resume(returning: authStatus)
-                    }
-                }
-            }
+        // Check current auth status (don't request — it crashes in Swift 6 due to TCC callback threading)
+        let status = SFSpeechRecognizer.authorizationStatus()
+        if status == .notDetermined {
+            // First time: user needs to grant permission via System Settings
+            print("Speech recognition permission not yet granted.")
+            print("Go to: System Settings > Privacy & Security > Speech Recognition")
+            throw TranscriptionError.notAuthorized
         }
-
         guard status == .authorized else {
             throw TranscriptionError.notAuthorized
         }

@@ -14,12 +14,5 @@ struct MeetingScribeApp: App {
                 .foregroundColor(appState.isRecording ? .red : .primary)
         }
         .menuBarExtraStyle(.window)
-
-        Window("MeetingScribe Settings", id: "settings") {
-            SettingsView()
-                .environmentObject(appState)
-        }
-        .windowResizability(.contentSize)
-        .defaultSize(width: 400, height: 280)
     }
 }
