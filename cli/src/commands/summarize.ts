@@ -42,11 +42,13 @@ async function summarizeMeeting(
     chalk.dim(`Summarizing meeting ${meetingId} with prompt "${promptName}"...`),
   );
 
-  // Invoke claude CLI
+  // Invoke claude CLI — embed the file path in the prompt so Claude reads it
+  const fullPrompt = `${promptContent}\n\nThe meeting transcript file is located at: ${tmpFile}\nPlease read that file and produce the summary.`;
+
   try {
     execFileSync(
       "claude",
-      ["--allowedTools", "Read", "-p", promptContent, tmpFile],
+      ["--allowedTools", "Read", "-p", fullPrompt],
       { stdio: "inherit" },
     );
   } catch {
