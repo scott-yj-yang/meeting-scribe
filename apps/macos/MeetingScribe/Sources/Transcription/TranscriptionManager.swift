@@ -14,9 +14,11 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
 
     private var allUtterances: [(text: String, time: TimeInterval)] = []
     private var currentPartialText: String = ""
+    private var lastTextUpdateTime: Date = Date()
+    private var saveTimer: Timer?
     private var bufferCount = 0
-    private var isRestarting = false  // Prevent cascading restarts
-    private var isActive = false      // Whether we should keep restarting
+    private var isRestarting = false
+    private var isActive = false
 
     func setup() async throws {
         recordingStartTime = Date()
@@ -57,6 +59,8 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
     /// Call when recording stops
     func finalize() {
         isActive = false
+        saveTimer?.invalidate()
+        saveTimer = nil
 
         // Save any remaining partial text
         savePartialText()
@@ -86,6 +90,8 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
 
     func reset() {
         isActive = false
+        saveTimer?.invalidate()
+        saveTimer = nil
         recognitionTask?.cancel()
         recognitionTask = nil
         recognitionRequest?.endAudio()
@@ -135,16 +141,26 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
                     if !text.isEmpty {
                         self.currentPartialText = text
                         self.liveText = text
+                        self.lastTextUpdateTime = Date()
+
+                        // Auto-save after 2 seconds of no new text (pause between sentences)
+                        self.saveTimer?.invalidate()
+                        self.saveTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
+                            Task { @MainActor [weak self] in
+                                self?.savePartialText()
+                            }
+                        }
                     }
 
                     if result.isFinal {
+                        self.saveTimer?.invalidate()
                         self.savePartialText()
                         self.scheduleRestart()
                     }
                 }
 
                 if error != nil {
-                    // Save whatever we have before restarting
+                    self.saveTimer?.invalidate()
                     self.savePartialText()
                     self.scheduleRestart()
                 }
