@@ -15,9 +15,11 @@ struct MeetingScribeApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        Settings {
+        Window("MeetingScribe Settings", id: "settings") {
             SettingsView()
                 .environmentObject(appState)
         }
+        .windowResizability(.contentSize)
+        .defaultSize(width: 400, height: 280)
     }
 }

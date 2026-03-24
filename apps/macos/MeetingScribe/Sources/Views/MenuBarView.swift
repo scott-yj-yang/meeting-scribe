@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MenuBarView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -47,8 +48,9 @@ struct MenuBarView: View {
 
             Divider()
 
-            SettingsLink {
-                Text("Settings...")
+            Button("Settings...") {
+                openWindow(id: "settings")
+                NSApplication.shared.activate(ignoringOtherApps: true)
             }
 
             Button("Quit") {

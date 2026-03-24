@@ -18,10 +18,14 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
         segments.removeAll()
         liveText = ""
 
-        // Request speech recognition authorization
-        let status = await withCheckedContinuation { continuation in
-            SFSpeechRecognizer.requestAuthorization { status in
-                continuation.resume(returning: status)
+        // Request speech recognition authorization on the main thread
+        let status = await withCheckedContinuation { (continuation: CheckedContinuation<SFSpeechRecognizerAuthorizationStatus, Never>) in
+            DispatchQueue.main.async {
+                SFSpeechRecognizer.requestAuthorization { authStatus in
+                    DispatchQueue.main.async {
+                        continuation.resume(returning: authStatus)
+                    }
+                }
             }
         }
 
