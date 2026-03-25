@@ -5,12 +5,12 @@ import SwiftUI
 class AppState: ObservableObject {
     @Published var isRecording = false
     @Published var recordingDuration: TimeInterval = 0
-    @Published var recentRecordings: [Recording] = []
     @Published var serverStatus: ServerStatus = .unknown
     @Published var statusMessage: String? = nil
     @Published var meetingTitle: String = ""
     @Published var selectedMeetingType: String? = nil
     @Published var selectedCalendarEvent: CalendarManager.CalendarEvent? = nil
+    @Published var meetingNotes: String = ""
 
     // Post-recording state
     @Published var lastRecordingAudioURL: URL? = nil
@@ -20,12 +20,15 @@ class AppState: ObservableObject {
     @Published var isTranscribing = false
     @Published var transcriptionETA: String? = nil
     @Published var lastTranscriptSnippet: String? = nil
+    @Published var currentMeeting: LocalMeeting? = nil
 
     let calendarManager = CalendarManager()
+    let meetingStore: MeetingStore
 
     @AppStorage("serverURL") var serverURL = "http://localhost:3000"
     @AppStorage("outputDirectory") var outputDirectory = "~/MeetingScribe"
     @AppStorage("saveAudio") var saveAudio = true
+    @AppStorage("autoPushToServer") var autoPushToServer = true
 
     @Published var liveTranscriptActive = false
     private var liveTranscriptTimer: Timer?
@@ -38,11 +41,20 @@ class AppState: ObservableObject {
     private var audioFileWriter: AudioFileWriter?
     private let whisperProcessor = WhisperPostProcessor()
 
+    init() {
+        meetingStore = MeetingStore(baseDirectory: "~/MeetingScribe")
+    }
+
+    var recentRecordings: [LocalMeeting] {
+        meetingStore.meetings
+    }
+
     func toggleRecording() {
         if isRecording {
             stopRecording()
         } else {
             showPostRecording = false
+            currentMeeting = nil
             statusMessage = "Starting..."
             Task.detached { [weak self] in
                 await self?.doStartRecording()
@@ -50,7 +62,6 @@ class AppState: ObservableObject {
         }
     }
 
-    /// Toggle live transcript on for 60 seconds (audio check)
     func toggleLiveTranscriptCheck() {
         if liveTranscriptActive {
             disableLiveTranscript()
@@ -64,7 +75,8 @@ class AppState: ObservableObject {
         liveTranscriptTimer?.invalidate()
         liveTranscriptTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: false) { [weak self] _ in
             Task { @MainActor in
-                self?.disableLiveTranscript()
+                self?.liveTranscriptActive = false
+                self?.transcriptionManager.reset()
             }
         }
     }
@@ -87,7 +99,6 @@ class AppState: ObservableObject {
                 Task { @MainActor in
                     self?.liveTranscriptActive = false
                     self?.transcriptionManager.reset()
-                    print("[Transcription] Auto-disabled live transcript after 60s")
                 }
             }
 
@@ -122,7 +133,6 @@ class AppState: ObservableObject {
 
             if let format = audioCaptureManager.micFormat {
                 try writer.start(format: format)
-                print("[Recording] Audio file: \(writer.fileURL.path)")
             }
 
             recordingStartDate = startDate
@@ -136,8 +146,7 @@ class AppState: ObservableObject {
                 }
             }
         } catch {
-            statusMessage = "Recording failed: \(error.localizedDescription)"
-            print("[Recording] Failed: \(error)")
+            statusMessage = "Failed: \(error.localizedDescription)"
         }
     }
 
@@ -167,109 +176,121 @@ class AppState: ObservableObject {
             ? "Meeting \(startDate.formatted(.dateTime.month().day().hour().minute()))"
             : meetingTitle.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        print("[Recording] Stopped. Audio: \(audioURL.path)")
         isTranscribing = true
         showPostRecording = true
-
-        // Estimate transcription time (~1/10th of recording duration for large-v3-turbo)
         let etaSeconds = max(5, Int(recordingDuration / 10))
         transcriptionETA = formatETA(etaSeconds)
         statusMessage = "Transcribing..."
 
+        // Transcribe
         var segments: [TranscriptSegment] = []
+        var snippetText: String? = nil
         if whisperProcessor.isAvailable {
             do {
-                print("[Whisper] Transcribing... (ETA: ~\(etaSeconds)s)")
                 let result = try await whisperProcessor.transcribe(audioFile: audioURL)
                 segments = result.segments
-                print("[Whisper] Done — \(segments.count) segments")
+                snippetText = String(result.text.prefix(500))
                 statusMessage = "Transcription complete"
-                // Save snippet for display
-                let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                lastTranscriptSnippet = String(text.prefix(500))
             } catch {
-                print("[Whisper] Failed: \(error.localizedDescription)")
-                statusMessage = "Transcription failed. Audio saved."
-                lastTranscriptSnippet = nil
+                statusMessage = "Transcription failed"
             }
         } else {
-            print("[Whisper] Not installed.")
-            statusMessage = "Install whisper-cpp for transcription"
-            lastTranscriptSnippet = nil
+            statusMessage = "Install whisper-cpp"
         }
         isTranscribing = false
         transcriptionETA = nil
+        lastTranscriptSnippet = snippetText
 
+        // Save markdown
         let markdown = MarkdownFormatter.format(
-            title: title,
-            date: startDate,
-            duration: recordingDuration,
+            title: title, date: startDate, duration: recordingDuration,
             meetingType: selectedMeetingType?.lowercased(),
             audioSources: audioCaptureManager.captureMode == .micAndSystem
                 ? ["system", "microphone"] : ["microphone"],
             segments: segments
         )
 
-        // Save locally
-        if let fileURL = try? LocalStorage.save(
+        let meetingDir = LocalStorage.meetingDirectory(title: title, date: startDate, baseDirectory: outputDirectory)
+        lastRecordingMarkdownURL = try? LocalStorage.save(
             markdown: markdown, title: title, date: startDate, directory: outputDirectory
-        ) {
-            lastRecordingMarkdownURL = fileURL
-        }
-
-        // Auto-upload to server
-        var calInfo: MeetingAPIClient.CalendarInfo? = nil
-        if let event = selectedCalendarEvent {
-            calInfo = MeetingAPIClient.CalendarInfo(
-                eventId: event.id, title: event.title, organizer: event.organizer,
-                attendees: event.attendees, start: event.startDate, end: event.endDate
-            )
-        }
-
-        let client = MeetingAPIClient(serverURL: serverURL)
-        do {
-            let meetingId = try await client.uploadMeeting(
-                title: title, date: startDate,
-                duration: Int(recordingDuration),
-                audioSources: ["microphone"],
-                meetingType: selectedMeetingType?.lowercased(),
-                rawMarkdown: markdown,
-                segments: segments,
-                calendar: calInfo
-            )
-            lastUploadedMeetingId = meetingId
-            statusMessage = "\(title) saved"
-        } catch {
-            await uploadQueue.enqueue(UploadQueue.PendingUpload(
-                filePath: recentRecordings.first?.filePath ?? "",
-                title: title, date: startDate,
-                duration: Int(recordingDuration),
-                audioSources: ["microphone"],
-                meetingType: nil
-            ))
-            lastUploadedMeetingId = nil
-            statusMessage = "Saved locally (server offline)"
-        }
-
-        // Save to recent recordings (now we have the server ID)
-        let recording = Recording(
-            id: UUID(), title: title, date: startDate,
-            duration: recordingDuration,
-            filePath: lastRecordingMarkdownURL?.path ?? "",
-            audioPath: audioURL.path,
-            serverMeetingId: lastUploadedMeetingId,
-            transcriptSnippet: lastTranscriptSnippet
         )
-        recentRecordings.insert(recording, at: 0)
-        if recentRecordings.count > 5 { recentRecordings.removeLast() }
+
+        // Save notes if any
+        let notes = meetingNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !notes.isEmpty {
+            let notesURL = meetingDir.appendingPathComponent("notes.md")
+            try? notes.write(to: notesURL, atomically: true, encoding: .utf8)
+        }
+
+        // Auto-push to server if enabled
+        var serverId: String? = nil
+        if autoPushToServer {
+            var calInfo: MeetingAPIClient.CalendarInfo? = nil
+            if let event = selectedCalendarEvent {
+                calInfo = MeetingAPIClient.CalendarInfo(
+                    eventId: event.id, title: event.title, organizer: event.organizer,
+                    attendees: event.attendees, start: event.startDate, end: event.endDate
+                )
+            }
+
+            let client = MeetingAPIClient(serverURL: serverURL)
+            do {
+                // Append notes to markdown for server upload
+                var uploadMarkdown = markdown
+                if !notes.isEmpty {
+                    uploadMarkdown += "\n\n## Meeting Notes\n\n\(notes)\n"
+                }
+
+                let id = try await client.uploadMeeting(
+                    title: title, date: startDate,
+                    duration: Int(recordingDuration),
+                    audioSources: ["microphone"],
+                    meetingType: selectedMeetingType?.lowercased(),
+                    rawMarkdown: uploadMarkdown,
+                    segments: segments,
+                    calendar: calInfo
+                )
+                serverId = id
+                lastUploadedMeetingId = id
+                statusMessage = "Saved & synced"
+            } catch {
+                lastUploadedMeetingId = nil
+                statusMessage = "Saved locally (sync failed)"
+            }
+        } else {
+            lastUploadedMeetingId = nil
+            statusMessage = "Saved locally"
+        }
+
+        // Save to local database
+        let meeting = meetingStore.createMeeting(
+            title: title, date: startDate, duration: recordingDuration,
+            meetingType: selectedMeetingType?.lowercased(),
+            transcriptSnippet: snippetText,
+            directoryURL: meetingDir,
+            serverMeetingId: serverId,
+            calendarEventTitle: selectedCalendarEvent?.title,
+            notes: notes.isEmpty ? nil : notes
+        )
+        currentMeeting = meeting
 
         meetingTitle = ""
         selectedMeetingType = nil
         selectedCalendarEvent = nil
-        print("[Recording] Complete: \(title)")
+        meetingNotes = ""
     }
 
     // MARK: - Post-recording actions
+
+    func showMeetingSummary(_ meeting: LocalMeeting) {
+        currentMeeting = meeting
+        lastRecordingAudioURL = meeting.hasAudio ? meeting.directoryURL?.appendingPathComponent("audio.wav") : nil
+        lastRecordingMarkdownURL = meeting.hasTranscript ? meeting.directoryURL?.appendingPathComponent("transcript.md") : nil
+        lastUploadedMeetingId = meeting.serverMeetingId
+        lastTranscriptSnippet = meeting.transcriptSnippet
+        statusMessage = meeting.title
+        showPostRecording = true
+    }
 
     func openAudioInFinder() {
         guard let url = lastRecordingAudioURL else { return }
@@ -282,14 +303,52 @@ class AppState: ObservableObject {
     }
 
     func openOutputFolder() {
-        let expandedDir = NSString(string: outputDirectory).expandingTildeInPath
-        NSWorkspace.shared.open(URL(fileURLWithPath: expandedDir))
+        if let dir = currentMeeting?.directoryURL {
+            NSWorkspace.shared.open(dir)
+        } else {
+            let path = NSString(string: outputDirectory).expandingTildeInPath
+            NSWorkspace.shared.open(URL(fileURLWithPath: path))
+        }
     }
 
     func openInBrowser() {
         guard let meetingId = lastUploadedMeetingId else { return }
         if let url = URL(string: "\(serverURL)/meetings/\(meetingId)") {
             NSWorkspace.shared.open(url)
+        }
+    }
+
+    func pushToServer() {
+        guard let meeting = currentMeeting else { return }
+        Task {
+            statusMessage = "Syncing..."
+            let transcript = meetingStore.loadTranscript(meeting)
+            let notes = meetingStore.loadNotes(meeting)
+            var uploadMd = transcript
+            if !notes.isEmpty {
+                uploadMd += "\n\n## Meeting Notes\n\n\(notes)\n"
+            }
+
+            let client = MeetingAPIClient(serverURL: serverURL)
+            do {
+                let id = try await client.uploadMeeting(
+                    title: meeting.title, date: meeting.date,
+                    duration: Int(meeting.duration),
+                    audioSources: ["microphone"],
+                    meetingType: meeting.meetingType,
+                    rawMarkdown: uploadMd,
+                    segments: [],
+                    calendar: nil
+                )
+                var updated = meeting
+                updated.serverMeetingId = id
+                meetingStore.save(updated)
+                currentMeeting = updated
+                lastUploadedMeetingId = id
+                statusMessage = "Synced"
+            } catch {
+                statusMessage = "Sync failed"
+            }
         }
     }
 
@@ -301,25 +360,25 @@ class AppState: ObservableObject {
             request.httpMethod = "DELETE"
             do {
                 let (_, response) = try await URLSession.shared.data(for: request)
-                if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 204 {
+                if let http = response as? HTTPURLResponse, http.statusCode == 204 {
+                    if var meeting = currentMeeting {
+                        meeting.serverMeetingId = nil
+                        meetingStore.save(meeting)
+                        currentMeeting = meeting
+                    }
                     lastUploadedMeetingId = nil
-                    statusMessage = "Removed from server (local files kept)"
-                    print("[Server] Deleted meeting \(meetingId)")
+                    statusMessage = "Removed from server"
                 }
             } catch {
-                statusMessage = "Failed to delete from server"
+                statusMessage = "Delete failed"
             }
         }
     }
 
-    /// Show a past recording's summary panel
-    func showRecordingSummary(_ recording: Recording) {
-        lastRecordingMarkdownURL = recording.filePath.isEmpty ? nil : URL(fileURLWithPath: recording.filePath)
-        lastRecordingAudioURL = recording.audioPath.flatMap { URL(fileURLWithPath: $0) }
-        lastUploadedMeetingId = recording.serverMeetingId
-        lastTranscriptSnippet = recording.transcriptSnippet
-        statusMessage = recording.title
-        showPostRecording = true
+    func deleteLocally() {
+        guard let meeting = currentMeeting else { return }
+        meetingStore.delete(meeting)
+        dismissPostRecording()
     }
 
     func dismissPostRecording() {
@@ -328,6 +387,7 @@ class AppState: ObservableObject {
         lastRecordingMarkdownURL = nil
         lastUploadedMeetingId = nil
         lastTranscriptSnippet = nil
+        currentMeeting = nil
         statusMessage = nil
     }
 
@@ -348,7 +408,7 @@ class AppState: ObservableObject {
             }
             do {
                 let (_, response) = try await URLSession.shared.data(from: url)
-                if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
+                if let http = response as? HTTPURLResponse, http.statusCode == 200 {
                     serverStatus = .connected
                 } else {
                     serverStatus = .disconnected
@@ -358,17 +418,6 @@ class AppState: ObservableObject {
             }
         }
     }
-}
-
-struct Recording: Identifiable {
-    let id: UUID
-    let title: String
-    let date: Date
-    let duration: TimeInterval
-    let filePath: String
-    let audioPath: String?
-    let serverMeetingId: String?
-    let transcriptSnippet: String?
 }
 
 enum ServerStatus {

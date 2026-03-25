@@ -183,6 +183,33 @@ struct MenuBarView: View {
                             .lineLimit(1)
                     }
                 }
+                // Notes field
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Notes")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                        .textCase(.uppercase)
+                    TextEditor(text: $appState.meetingNotes)
+                        .font(.system(size: 11))
+                        .frame(minHeight: 36, maxHeight: 60)
+                        .scrollContentBackground(.hidden)
+                        .padding(4)
+                        .background(Color.gray.opacity(0.06))
+                        .cornerRadius(6)
+                        .overlay(
+                            Group {
+                                if appState.meetingNotes.isEmpty {
+                                    Text("Jot down quick notes...")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(.tertiary)
+                                        .padding(.leading, 8)
+                                        .padding(.top, 8)
+                                        .allowsHitTesting(false)
+                                }
+                            },
+                            alignment: .topLeading
+                        )
+                }
             }
             .padding(.horizontal, 16)
             .padding(.top, 10)
@@ -540,7 +567,7 @@ struct MenuBarView: View {
             } else {
                 ForEach(appState.recentRecordings.prefix(5)) { recording in
                     Button {
-                        appState.showRecordingSummary(recording)
+                        appState.showMeetingSummary(recording)
                     } label: {
                         HStack {
                             VStack(alignment: .leading, spacing: 1) {
@@ -606,6 +633,8 @@ struct MenuBarView: View {
 
             Divider()
 
+            Toggle("Auto-sync to server after recording", isOn: $appState.autoPushToServer)
+                .font(.caption)
             Toggle("Save raw audio files", isOn: $appState.saveAudio)
                 .font(.caption)
         }
@@ -730,24 +759,44 @@ struct MenuBarView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 10)
 
-                // Web actions row
+                // Sync + actions row
                 HStack(spacing: 6) {
-                    actionButton(
-                        icon: "globe",
-                        iconColor: .green,
-                        label: "Web UI",
-                        enabled: appState.lastUploadedMeetingId != nil
-                    ) {
-                        appState.openInBrowser()
+                    if appState.lastUploadedMeetingId != nil {
+                        actionButton(
+                            icon: "globe",
+                            iconColor: .green,
+                            label: "Web UI",
+                            enabled: true
+                        ) {
+                            appState.openInBrowser()
+                        }
+
+                        actionButton(
+                            icon: "icloud.slash",
+                            iconColor: .orange,
+                            label: "Unpush",
+                            enabled: true
+                        ) {
+                            appState.deleteFromServer()
+                        }
+                    } else {
+                        actionButton(
+                            icon: "icloud.and.arrow.up",
+                            iconColor: .blue,
+                            label: "Push",
+                            enabled: true
+                        ) {
+                            appState.pushToServer()
+                        }
                     }
 
                     actionButton(
                         icon: "trash",
                         iconColor: .red,
-                        label: "Unpush",
-                        enabled: appState.lastUploadedMeetingId != nil
+                        label: "Delete",
+                        enabled: true
                     ) {
-                        appState.deleteFromServer()
+                        withAnimation(.easeInOut(duration: 0.2)) { appState.deleteLocally() }
                     }
 
                     actionButton(
