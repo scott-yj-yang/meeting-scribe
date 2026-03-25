@@ -10,8 +10,8 @@
 #   ./transcribe.sh ~/recording.m4a --summarize
 #
 # Requirements:
-#   - whisper-cpp (brew install whisper-cpp)
-#   - whisper model downloaded (whisper-cpp-download-ggml-model large-v3-turbo)
+#   - whisper-cli (brew install whisper-cli)
+#   - whisper model downloaded (whisper-cli-download-ggml-model large-v3-turbo)
 #   - ffmpeg (brew install ffmpeg) — for audio format conversion
 #   - Web server running at localhost:3000 (cd apps/web && npm run dev)
 
@@ -20,7 +20,7 @@ set -euo pipefail
 # --- Configuration ---
 API_URL="${MEETINGSCRIBE_API_URL:-http://localhost:3000}"
 API_KEY="${MEETINGSCRIBE_API_KEY:-}"
-MODEL_PATH="${WHISPER_MODEL:-$(find ~/.local/share/whisper-cpp /opt/homebrew/share/whisper-cpp 2>/dev/null -name "ggml-large-v3-turbo.bin" -print -quit 2>/dev/null || echo "")}"
+MODEL_PATH="${WHISPER_MODEL:-$(find ~/.local/share/whisper-cli /opt/homebrew/share/whisper-cli 2>/dev/null -name "ggml-large-v3-turbo.bin" -print -quit 2>/dev/null || echo "")}"
 OUTPUT_DIR="${MEETINGSCRIBE_OUTPUT_DIR:-$HOME/MeetingScribe}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
@@ -73,14 +73,14 @@ if [[ -z "$TITLE" ]]; then
 fi
 
 # --- Check dependencies ---
-if ! command -v whisper-cpp &>/dev/null; then
-    echo -e "${RED}Error: whisper-cpp not found. Install with: brew install whisper-cpp${NC}"
+if ! command -v whisper-cli &>/dev/null; then
+    echo -e "${RED}Error: whisper-cli not found. Install with: brew install whisper-cli${NC}"
     exit 1
 fi
 
 if [[ -z "$MODEL_PATH" || ! -f "$MODEL_PATH" ]]; then
     echo -e "${RED}Error: Whisper model not found.${NC}"
-    echo "Download with: whisper-cpp-download-ggml-model large-v3-turbo"
+    echo "Download with: whisper-cli-download-ggml-model large-v3-turbo"
     exit 1
 fi
 
@@ -107,7 +107,7 @@ fi
 echo -e "${BLUE}[2/4] Transcribing with whisper.cpp (this may take a few minutes)...${NC}"
 TRANSCRIPT_FILE="$TMPDIR_WORK/transcript"
 
-whisper-cpp \
+whisper-cli \
     -m "$MODEL_PATH" \
     -f "$WAV_FILE" \
     -otxt \

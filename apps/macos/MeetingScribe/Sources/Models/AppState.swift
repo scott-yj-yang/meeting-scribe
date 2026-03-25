@@ -174,11 +174,7 @@ class AppState: ObservableObject {
             statusMessage = "Saved locally (server offline)"
         }
 
-        let content = UNMutableNotificationContent()
-        content.title = "Meeting Saved"
-        content.body = "\(title) — \(segments.count) segments"
-        let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-        try? await UNUserNotificationCenter.current().add(req)
+        print("[Recording] Complete: \(title) — \(segments.count) segments")
     }
 
     func checkServerStatus() {

@@ -21,10 +21,11 @@ final class WhisperPostProcessor: @unchecked Sendable {
     private let modelPath: String
 
     init() {
-        // Try common installation paths
-        self.whisperPath = WhisperPostProcessor.findBinary("whisper-cpp") ?? "/opt/homebrew/bin/whisper-cpp"
+        // whisper-cpp 1.8+ installs as "whisper-cli"
+        self.whisperPath = WhisperPostProcessor.findBinary("whisper-cli")
+            ?? WhisperPostProcessor.findBinary("whisper-cpp")
+            ?? "/opt/homebrew/bin/whisper-cli"
 
-        // Try common model paths
         self.modelPath = WhisperPostProcessor.findModel() ?? ""
     }
 
@@ -130,7 +131,7 @@ final class WhisperPostProcessor: @unchecked Sendable {
 
         var errorDescription: String? {
             switch self {
-            case .notInstalled: return "whisper-cpp not found. Install with: brew install whisper-cpp"
+            case .notInstalled: return "whisper-cli not found. Install with: brew install whisper-cpp"
             case .transcriptionFailed: return "whisper.cpp transcription failed"
             case .outputNotFound: return "whisper.cpp output file not found"
             }
