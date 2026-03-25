@@ -101,54 +101,44 @@ export default function ChatPage() {
   };
 
   const suggestions = [
-    "Summarize this meeting in 3 bullet points",
+    "Summarize in 3 bullet points",
     "What were the key decisions?",
-    "List all action items with owners",
-    "What questions were left unresolved?",
+    "List all action items",
+    "What was left unresolved?",
   ];
 
   return (
-    <div className="flex h-[calc(100vh-48px)] flex-col bg-white dark:bg-gray-950">
+    <div className="flex h-[calc(100vh-48px)] flex-col bg-white dark:bg-zinc-950">
       {/* Header bar */}
-      <div className="flex items-center justify-between border-b border-gray-100 px-5 py-2.5 dark:border-gray-800/60">
-        <div className="flex items-center gap-3">
-          <Link
-            href={`/meetings/${id}`}
-            className="flex items-center gap-1 text-xs text-gray-400 transition-colors hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
-          >
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-            </svg>
-            Back to meeting
-          </Link>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-400 dark:text-gray-500">{meetingTitle}</span>
-        </div>
+      <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-2.5 dark:border-zinc-800/50">
+        <Link
+          href={`/meetings/${id}`}
+          className="flex items-center gap-1.5 text-xs text-zinc-400 transition-colors hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300"
+        >
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+          </svg>
+          Back to meeting
+        </Link>
+        {meetingTitle && (
+          <span className="text-xs text-zinc-400 dark:text-zinc-500 truncate max-w-xs">{meetingTitle}</span>
+        )}
       </div>
 
       {/* Chat area */}
       <div className="flex-1 overflow-y-auto">
         {messages.length === 0 ? (
           /* Empty state */
-          <div className="flex h-full flex-col items-center justify-center px-4">
-            <div className="mb-5 flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-amber-200 to-orange-300 dark:from-amber-700 dark:to-orange-600">
-              <svg className="h-5 w-5 text-amber-800 dark:text-amber-100" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
-              </svg>
-            </div>
-            <h2 className="mb-1 text-base font-medium text-gray-800 dark:text-gray-200">
-              What would you like to know?
-            </h2>
-            <p className="mb-8 max-w-md text-center text-sm text-gray-400 dark:text-gray-500">
-              I have the full transcript for &ldquo;{meetingTitle}&rdquo; loaded. Ask me anything about it.
+          <div className="flex h-full flex-col items-center justify-center px-4 gap-4">
+            <p className="text-sm text-zinc-400 dark:text-zinc-500">
+              Ask anything about &ldquo;{meetingTitle || "this meeting"}&rdquo;
             </p>
-            <div className="grid w-full max-w-lg grid-cols-2 gap-2">
+            <div className="flex flex-wrap justify-center gap-2">
               {suggestions.map((q) => (
                 <button
                   key={q}
                   onClick={() => sendMessage(q)}
-                  className="rounded-xl border border-gray-150 bg-gray-50/50 px-4 py-3 text-left text-sm text-gray-600 transition-all hover:border-gray-250 hover:bg-gray-100/80 dark:border-gray-800 dark:bg-gray-900/50 dark:text-gray-400 dark:hover:border-gray-700 dark:hover:bg-gray-800/80"
+                  className="rounded-full border border-zinc-200 px-3.5 py-1.5 text-xs text-zinc-500 transition-all duration-150 hover:scale-[1.03] hover:border-zinc-300 hover:text-zinc-700 dark:border-zinc-700/60 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200"
                 >
                   {q}
                 </button>
@@ -157,37 +147,38 @@ export default function ChatPage() {
           </div>
         ) : (
           /* Message list */
-          <div className="mx-auto max-w-2xl px-4 py-8">
+          <div className="mx-auto max-w-2xl px-4 py-8 space-y-6">
             {messages.map((msg, i) => (
-              <div key={i} className={`mb-6 ${msg.role === "user" ? "flex justify-end" : ""}`}>
+              <div
+                key={i}
+                className={`flex animate-in fade-in slide-in-from-bottom-2 duration-200 ${
+                  msg.role === "user" ? "justify-end" : "gap-3"
+                }`}
+              >
                 {msg.role === "assistant" ? (
-                  /* Assistant message — claude.ai style */
-                  <div className="flex gap-3">
-                    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-200 to-orange-300 dark:from-amber-700 dark:to-orange-600">
-                      <svg className="h-3.5 w-3.5 text-amber-800 dark:text-amber-100" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
-                      </svg>
+                  <>
+                    {/* Assistant avatar */}
+                    <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800">
+                      <span className="text-[10px] font-semibold tracking-tight text-zinc-500 dark:text-zinc-400">C</span>
                     </div>
                     <div className="min-w-0 flex-1">
                       {msg.content ? (
-                        <div className="prose prose-sm dark:prose-invert max-w-none prose-p:leading-relaxed prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-headings:mt-4 prose-headings:mb-2">
+                        <div className="prose prose-sm dark:prose-invert max-w-none text-zinc-700 dark:text-zinc-300 prose-p:leading-relaxed prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-headings:mt-4 prose-headings:mb-2 prose-headings:text-zinc-800 dark:prose-headings:text-zinc-200 prose-strong:text-zinc-800 dark:prose-strong:text-zinc-200 prose-code:text-zinc-700 dark:prose-code:text-zinc-300">
                           <ReactMarkdown>{msg.content}</ReactMarkdown>
                         </div>
                       ) : (
                         streaming && i === messages.length - 1 && (
-                          <div className="flex items-center gap-1.5 py-2">
-                            <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" style={{ animationDelay: "0ms" }} />
-                            <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" style={{ animationDelay: "150ms" }} />
-                            <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" style={{ animationDelay: "300ms" }} />
+                          <div className="py-2">
+                            <div className="h-1.5 w-1.5 rounded-full bg-zinc-400 dark:bg-zinc-500 animate-pulse" />
                           </div>
                         )
                       )}
                     </div>
-                  </div>
+                  </>
                 ) : (
-                  /* User message */
-                  <div className="max-w-[80%] rounded-2xl bg-gray-100 px-4 py-2.5 dark:bg-gray-800">
-                    <p className="text-sm leading-relaxed text-gray-800 whitespace-pre-wrap dark:text-gray-200">{msg.content}</p>
+                  /* User message — right-aligned dark pill */
+                  <div className="max-w-[80%] rounded-2xl bg-zinc-900 px-4 py-2.5 dark:bg-zinc-100">
+                    <p className="text-sm leading-relaxed text-zinc-100 whitespace-pre-wrap dark:text-zinc-900">{msg.content}</p>
                   </div>
                 )}
               </div>
@@ -197,18 +188,18 @@ export default function ChatPage() {
         )}
       </div>
 
-      {/* Input area — claude.ai style */}
-      <div className="border-t border-gray-100 bg-white px-4 pb-4 pt-3 dark:border-gray-800/60 dark:bg-gray-950">
+      {/* Input area */}
+      <div className="px-4 pb-4 pt-3">
         <div className="mx-auto max-w-2xl">
-          <div className="relative rounded-2xl border border-gray-200 bg-white shadow-sm transition-shadow focus-within:border-gray-300 focus-within:shadow-md dark:border-gray-700 dark:bg-gray-900 dark:focus-within:border-gray-600">
+          <div className="relative rounded-xl border border-zinc-200/80 bg-white/80 shadow-sm backdrop-blur-sm transition-shadow focus-within:border-zinc-300 focus-within:shadow-md dark:border-zinc-700/60 dark:bg-zinc-900/80 dark:focus-within:border-zinc-600">
             <textarea
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Message Claude..."
+              placeholder="Ask about this meeting…"
               rows={1}
-              className="w-full resize-none border-0 bg-transparent px-4 pb-10 pt-3.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-0 dark:text-gray-100 dark:placeholder-gray-500"
+              className="w-full resize-none border-0 bg-transparent px-4 pb-10 pt-3.5 text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-0 dark:text-zinc-100 dark:placeholder-zinc-500"
               style={{ maxHeight: "160px" }}
               onInput={(e) => {
                 const t = e.target as HTMLTextAreaElement;
@@ -216,23 +207,24 @@ export default function ChatPage() {
                 t.style.height = Math.min(t.scrollHeight, 160) + "px";
               }}
             />
-            <div className="absolute bottom-2 right-2 flex items-center gap-2">
-              <span className="text-xs text-gray-300 dark:text-gray-600">
-                {input.length > 0 ? "Enter ↵" : ""}
-              </span>
+            <div className="absolute bottom-2.5 right-2.5 flex items-center gap-2">
+              {input.length > 0 && (
+                <span className="text-[10px] text-zinc-300 dark:text-zinc-600">Enter ↵</span>
+              )}
               <button
                 onClick={() => sendMessage()}
                 disabled={!input.trim() || streaming}
-                className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-900 text-white transition-all hover:bg-black disabled:bg-gray-200 disabled:text-gray-400 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-white dark:disabled:bg-gray-800 dark:disabled:text-gray-600"
+                className="flex h-7 w-7 items-center justify-center rounded-lg bg-zinc-900 text-white transition-all hover:bg-zinc-700 disabled:bg-zinc-100 disabled:text-zinc-300 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300 dark:disabled:bg-zinc-800 dark:disabled:text-zinc-600"
               >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                {/* Arrow up icon */}
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
                 </svg>
               </button>
             </div>
           </div>
-          <p className="mt-1.5 text-center text-xs text-gray-300 dark:text-gray-600">
-            Responses are generated by Claude Code using this meeting&apos;s transcript
+          <p className="mt-1.5 text-center text-[10px] text-zinc-300 dark:text-zinc-700">
+            Responses are generated using this meeting&apos;s transcript
           </p>
         </div>
       </div>

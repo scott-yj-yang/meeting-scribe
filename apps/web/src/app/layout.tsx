@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
+import ThemeToggle from "@/components/ThemeToggle";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -50,12 +51,15 @@ export default function RootLayout({
               </svg>
               MeetingScribe
             </Link>
-            <Link
-              href="/settings"
-              className="rounded-md px-2.5 py-1.5 text-sm text-gray-500 dark:text-gray-400 transition-colors hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
-            >
-              Settings
-            </Link>
+            <div className="flex items-center gap-1">
+              <Link
+                href="/settings"
+                className="rounded-md px-2.5 py-1.5 text-sm text-gray-500 dark:text-gray-400 transition-colors hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+              >
+                Settings
+              </Link>
+              <ThemeToggle />
+            </div>
           </div>
         </nav>
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
