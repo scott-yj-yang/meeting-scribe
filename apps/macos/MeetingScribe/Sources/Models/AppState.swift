@@ -105,6 +105,8 @@ class AppState: ObservableObject {
             }
             audioCaptureManager.onSystemAudio = { [weak self] sampleBuffer in
                 nonisolated(unsafe) let sampleBuffer = sampleBuffer
+                // Write system audio (remote participants) to the same file
+                writer.writeSystemAudio(sampleBuffer: sampleBuffer)
                 Task { @MainActor in
                     if self?.liveTranscriptActive == true {
                         transcriber.processSampleBuffer(sampleBuffer, speaker: "Remote")
