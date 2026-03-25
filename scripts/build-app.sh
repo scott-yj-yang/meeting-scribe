@@ -38,6 +38,26 @@ mkdir -p "$MACOS_DIR" "$RESOURCES"
 # Copy binary
 cp "$BINARY" "$MACOS_DIR/MeetingScribe"
 
+# Copy app icon
+ICON_SRC="$SWIFT_DIR/Sources/Resources/AppIcon.appiconset/icon_512x512.png"
+if [ -f "$ICON_SRC" ]; then
+    # Convert PNG to ICNS
+    ICONSET_DIR=$(mktemp -d)/AppIcon.iconset
+    mkdir -p "$ICONSET_DIR"
+    cp "$SWIFT_DIR/Sources/Resources/AppIcon.appiconset/icon_16x16.png" "$ICONSET_DIR/icon_16x16.png"
+    cp "$SWIFT_DIR/Sources/Resources/AppIcon.appiconset/icon_32x32.png" "$ICONSET_DIR/icon_16x16@2x.png"
+    cp "$SWIFT_DIR/Sources/Resources/AppIcon.appiconset/icon_32x32.png" "$ICONSET_DIR/icon_32x32.png"
+    cp "$SWIFT_DIR/Sources/Resources/AppIcon.appiconset/icon_64x64.png" "$ICONSET_DIR/icon_32x32@2x.png"
+    cp "$SWIFT_DIR/Sources/Resources/AppIcon.appiconset/icon_128x128.png" "$ICONSET_DIR/icon_128x128.png"
+    cp "$SWIFT_DIR/Sources/Resources/AppIcon.appiconset/icon_256x256.png" "$ICONSET_DIR/icon_128x128@2x.png"
+    cp "$SWIFT_DIR/Sources/Resources/AppIcon.appiconset/icon_256x256.png" "$ICONSET_DIR/icon_256x256.png"
+    cp "$SWIFT_DIR/Sources/Resources/AppIcon.appiconset/icon_512x512.png" "$ICONSET_DIR/icon_256x256@2x.png"
+    cp "$SWIFT_DIR/Sources/Resources/AppIcon.appiconset/icon_512x512.png" "$ICONSET_DIR/icon_512x512.png"
+    cp "$SWIFT_DIR/Sources/Resources/AppIcon.appiconset/icon_1024x1024.png" "$ICONSET_DIR/icon_512x512@2x.png"
+    iconutil -c icns "$ICONSET_DIR" -o "$RESOURCES/AppIcon.icns" 2>/dev/null
+    echo -e "${GREEN}Icon added${NC}"
+fi
+
 # Create Info.plist
 cat > "$CONTENTS/Info.plist" << 'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -58,6 +78,8 @@ cat > "$CONTENTS/Info.plist" << 'PLIST'
     <string>APPL</string>
     <key>CFBundleExecutable</key>
     <string>MeetingScribe</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>
     <string>26.0</string>
     <key>LSUIElement</key>

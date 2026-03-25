@@ -3,6 +3,7 @@ import SwiftUI
 struct MenuBarView: View {
     @EnvironmentObject var appState: AppState
     @State private var showSettings = false
+    @State private var showTodaysMeetings = false
 
     private enum Panel: Equatable {
         case main, settings, postRecording
@@ -191,18 +192,39 @@ struct MenuBarView: View {
 
             // Today's other events
             if !appState.calendarManager.upcomingEvents.isEmpty {
-                DisclosureGroup {
-                    VStack(spacing: 4) {
+                VStack(spacing: 4) {
+                    // Header — entire row is tappable
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showTodaysMeetings.toggle()
+                        }
+                    } label: {
+                        HStack {
+                            Text("Today's meetings")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Text("(\(appState.calendarManager.upcomingEvents.count))")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundStyle(.tertiary)
+                                .rotationEffect(.degrees(showTodaysMeetings ? 90 : 0))
+                        }
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 8)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    if showTodaysMeetings {
                         ForEach(appState.calendarManager.upcomingEvents.prefix(5)) { event in
                             calendarRow(event: event)
                         }
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                     }
-                } label: {
-                    Text("Today's meetings")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
                 }
-                .font(.caption2)
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
             }
