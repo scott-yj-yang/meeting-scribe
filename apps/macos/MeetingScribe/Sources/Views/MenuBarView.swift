@@ -263,7 +263,7 @@ struct MenuBarView: View {
     }
 
     private var meetingTypes: [String] {
-        ["Standup", "1:1", "Team", "Planning", "Interview"]
+        ["1:1", "Subgroup", "Lab Meeting", "Casual", "Standup"]
     }
 
     // MARK: - Recording
@@ -372,64 +372,75 @@ struct MenuBarView: View {
     @ViewBuilder
     private func calendarSuggestion(event: CalendarManager.CalendarEvent, isCurrent: Bool) -> some View {
         let isSelected = appState.selectedCalendarEvent?.id == event.id
+        let accentColor: Color = isSelected ? .blue : (isCurrent ? .red : .blue)
 
         Button {
-            appState.meetingTitle = event.title
-            appState.selectedCalendarEvent = event
+            if isSelected {
+                appState.selectedCalendarEvent = nil
+            } else {
+                appState.meetingTitle = event.title
+                appState.selectedCalendarEvent = event
+            }
         } label: {
             HStack(spacing: 8) {
+                // Left accent bar
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(accentColor)
+                    .frame(width: 3, height: isSelected ? 40 : 32)
+
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
                         Image(systemName: isCurrent ? "record.circle.fill" : "calendar")
-                            .font(.system(size: 10))
-                            .foregroundStyle(isCurrent ? .red : .blue)
-                        Text(isCurrent ? "Happening now" : "Starting soon")
+                            .font(.system(size: 9))
+                            .foregroundStyle(accentColor)
+                        Text(isSelected ? "Selected" : (isCurrent ? "Happening now" : "Starting soon"))
                             .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(isCurrent ? .red : .blue)
+                            .foregroundStyle(accentColor)
                             .textCase(.uppercase)
                     }
 
                     Text(event.title)
-                        .font(.system(.caption, weight: .medium))
+                        .font(.system(.caption, weight: .semibold))
                         .foregroundStyle(.primary)
 
                     HStack(spacing: 4) {
                         Text("\(event.startDate.formatted(.dateTime.hour().minute())) – \(event.endDate.formatted(.dateTime.hour().minute()))")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
-
                         if !event.attendees.isEmpty {
                             Text("·")
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.tertiary)
                             Text("\(event.attendees.count) attendee\(event.attendees.count == 1 ? "" : "s")")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
                     }
 
-                    if !event.attendees.isEmpty {
+                    if isSelected && !event.attendees.isEmpty {
                         Text(event.attendees.prefix(4).joined(separator: ", "))
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                             .lineLimit(1)
                     }
                 }
+
                 Spacer()
-                if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                        .font(.system(size: 14))
-                } else {
-                    Image(systemName: "plus.circle")
-                        .foregroundStyle(.blue)
-                        .font(.system(size: 14))
-                }
+
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 14))
+                    .foregroundStyle(isSelected ? Color.blue : Color.gray.opacity(0.3))
             }
-            .padding(8)
-            .background(isSelected ? Color.green.opacity(0.08) : Color.blue.opacity(0.06))
+            .padding(.vertical, 8)
+            .padding(.horizontal, 8)
+            .background(isSelected ? Color.blue.opacity(0.08) : Color.gray.opacity(0.04))
             .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isSelected ? Color.blue.opacity(0.2) : Color.clear, lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.15), value: isSelected)
     }
 
     @ViewBuilder
@@ -437,31 +448,54 @@ struct MenuBarView: View {
         let isSelected = appState.selectedCalendarEvent?.id == event.id
 
         Button {
-            appState.meetingTitle = event.title
-            appState.selectedCalendarEvent = event
+            if isSelected {
+                appState.selectedCalendarEvent = nil
+            } else {
+                appState.meetingTitle = event.title
+                appState.selectedCalendarEvent = event
+            }
         } label: {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
+                // Time
                 Text(event.startDate.formatted(.dateTime.hour().minute()))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 48, alignment: .leading)
-                Text(event.title)
-                    .font(.caption)
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(isSelected ? .blue : .secondary)
+                    .frame(width: 44, alignment: .leading)
+
+                // Title + details
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(event.title)
+                        .font(.system(.caption, weight: isSelected ? .semibold : .regular))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+
+                    if isSelected && !event.attendees.isEmpty {
+                        Text(event.attendees.prefix(3).joined(separator: ", "))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+
                 Spacer()
+
                 if isSelected {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.green)
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.blue)
+                } else {
+                    Image(systemName: "circle")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.gray.opacity(0.3))
                 }
             }
-            .padding(.vertical, 3)
-            .padding(.horizontal, 6)
-            .background(isSelected ? Color.green.opacity(0.08) : Color.clear)
-            .cornerRadius(4)
+            .padding(.vertical, 6)
+            .padding(.horizontal, 8)
+            .background(isSelected ? Color.blue.opacity(0.08) : Color.clear)
+            .cornerRadius(6)
         }
         .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.15), value: isSelected)
     }
 
     // MARK: - Recent Section
