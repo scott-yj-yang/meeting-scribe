@@ -65,7 +65,7 @@ export default function MeetingEditPage() {
   }
 
   return (
-    <div>
+    <div className="page-transition">
       <div className="mb-6">
         <button
           onClick={() => router.back()}

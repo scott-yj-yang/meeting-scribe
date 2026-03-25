@@ -72,7 +72,7 @@ export default async function MeetingDetailPage({
     meeting.calendarAttendees.length > 0;
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="mx-auto max-w-4xl page-transition">
       {/* Breadcrumb */}
       <div className="mb-8">
         <Link

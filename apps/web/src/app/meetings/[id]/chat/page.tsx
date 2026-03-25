@@ -108,7 +108,7 @@ export default function ChatPage() {
   ];
 
   return (
-    <div className="flex h-[calc(100vh-48px)] flex-col bg-white dark:bg-zinc-950">
+    <div className="flex h-[calc(100vh-48px)] flex-col bg-white dark:bg-zinc-950 page-transition">
       {/* Header bar */}
       <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-2.5 dark:border-zinc-800/50">
         <Link

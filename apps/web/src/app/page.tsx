@@ -62,7 +62,7 @@ export default async function Home({
   }));
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto max-w-5xl page-transition">
       {/* Header */}
       <div className="mb-8 pt-2">
         <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-100">

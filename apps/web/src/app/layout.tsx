@@ -63,7 +63,9 @@ export default function RootLayout({
           </div>
         </nav>
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
-          {children}
+          <div className="page-transition">
+            {children}
+          </div>
         </main>
       </body>
     </html>
