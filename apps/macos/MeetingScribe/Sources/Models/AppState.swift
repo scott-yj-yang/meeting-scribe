@@ -17,6 +17,8 @@ class AppState: ObservableObject {
     @Published var lastRecordingMarkdownURL: URL? = nil
     @Published var lastUploadedMeetingId: String? = nil
     @Published var showPostRecording = false
+    @Published var isTranscribing = false
+    @Published var transcriptionETA: String? = nil
 
     let calendarManager = CalendarManager()
 
@@ -165,15 +167,22 @@ class AppState: ObservableObject {
             : meetingTitle.trimmingCharacters(in: .whitespacesAndNewlines)
 
         print("[Recording] Stopped. Audio: \(audioURL.path)")
+        isTranscribing = true
+        showPostRecording = true
+
+        // Estimate transcription time (~1/10th of recording duration for large-v3-turbo)
+        let etaSeconds = max(5, Int(recordingDuration / 10))
+        transcriptionETA = formatETA(etaSeconds)
         statusMessage = "Transcribing..."
 
         var segments: [TranscriptSegment] = []
         if whisperProcessor.isAvailable {
             do {
-                print("[Whisper] Transcribing...")
+                print("[Whisper] Transcribing... (ETA: ~\(etaSeconds)s)")
                 let result = try await whisperProcessor.transcribe(audioFile: audioURL)
                 segments = result.segments
                 print("[Whisper] Done — \(segments.count) segments")
+                statusMessage = "Transcription complete"
             } catch {
                 print("[Whisper] Failed: \(error.localizedDescription)")
                 statusMessage = "Transcription failed. Audio saved."
@@ -182,6 +191,8 @@ class AppState: ObservableObject {
             print("[Whisper] Not installed.")
             statusMessage = "Install whisper-cpp for transcription"
         }
+        isTranscribing = false
+        transcriptionETA = nil
 
         let markdown = MarkdownFormatter.format(
             title: title,
@@ -245,7 +256,6 @@ class AppState: ObservableObject {
         recentRecordings.insert(recording, at: 0)
         if recentRecordings.count > 5 { recentRecordings.removeLast() }
 
-        showPostRecording = true
         meetingTitle = ""
         selectedMeetingType = nil
         selectedCalendarEvent = nil
@@ -310,6 +320,13 @@ class AppState: ObservableObject {
         lastRecordingMarkdownURL = nil
         lastUploadedMeetingId = nil
         statusMessage = nil
+    }
+
+    private func formatETA(_ seconds: Int) -> String {
+        if seconds < 60 { return "~\(seconds)s" }
+        let min = seconds / 60
+        let sec = seconds % 60
+        return sec > 0 ? "~\(min)m \(sec)s" : "~\(min)m"
     }
 
     // MARK: - Server

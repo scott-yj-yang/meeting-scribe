@@ -510,189 +510,185 @@ struct MenuBarView: View {
 
     @ViewBuilder
     private var postRecordingPanel: some View {
-        // Header
-        HStack {
-            Button {
-                appState.dismissPostRecording()
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("Back")
-                        .font(.system(.caption, design: .rounded))
+        VStack(alignment: .leading, spacing: 0) {
+            // Header with back
+            HStack {
+                Button {
+                    appState.dismissPostRecording()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text("Back")
+                            .font(.caption)
+                    }
+                    .foregroundStyle(.blue)
                 }
-                .foregroundStyle(.blue)
+                .buttonStyle(.borderless)
+                Spacer()
+                if let message = appState.statusMessage {
+                    Text(message)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
-            .buttonStyle(.borderless)
-            Spacer()
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 14)
-        .padding(.bottom, 8)
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
+            .padding(.bottom, 10)
 
-        Divider().padding(.horizontal, 12)
+            // Transcription progress (shown while whisper is running)
+            if appState.isTranscribing {
+                HStack(spacing: 10) {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Transcribing audio...")
+                            .font(.system(.caption, weight: .medium))
+                        if let eta = appState.transcriptionETA {
+                            Text("Estimated time: \(eta)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.blue.opacity(0.06))
 
-        VStack(alignment: .leading, spacing: 10) {
-            // Status
+                Divider().padding(.horizontal, 12)
+            }
+
+            // Action grid
+            VStack(spacing: 2) {
+                // Files row
+                HStack(spacing: 6) {
+                    actionButton(
+                        icon: "waveform.circle.fill",
+                        iconColor: .purple,
+                        label: "Audio",
+                        enabled: appState.lastRecordingAudioURL != nil
+                    ) {
+                        appState.openAudioInFinder()
+                    }
+
+                    actionButton(
+                        icon: "doc.text.fill",
+                        iconColor: .blue,
+                        label: "Transcript",
+                        enabled: appState.lastRecordingMarkdownURL != nil && !appState.isTranscribing
+                    ) {
+                        appState.openTranscriptInFinder()
+                    }
+
+                    actionButton(
+                        icon: "folder.fill",
+                        iconColor: .orange,
+                        label: "Folder",
+                        enabled: true
+                    ) {
+                        appState.openOutputFolder()
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+
+                // Web actions row
+                HStack(spacing: 6) {
+                    actionButton(
+                        icon: "globe",
+                        iconColor: .green,
+                        label: "Web UI",
+                        enabled: appState.lastUploadedMeetingId != nil
+                    ) {
+                        appState.openInBrowser()
+                    }
+
+                    actionButton(
+                        icon: "trash",
+                        iconColor: .red,
+                        label: "Unpush",
+                        enabled: appState.lastUploadedMeetingId != nil
+                    ) {
+                        appState.deleteFromServer()
+                    }
+
+                    actionButton(
+                        icon: "plus.circle.fill",
+                        iconColor: .mint,
+                        label: "New",
+                        enabled: true
+                    ) {
+                        appState.dismissPostRecording()
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+                .padding(.bottom, 10)
+            }
+
+            // Upload status
+            Divider().padding(.horizontal, 12)
+
             HStack(spacing: 6) {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                    .font(.system(size: 14))
-                Text("Recording complete")
-                    .font(.system(.caption, design: .rounded, weight: .semibold))
-            }
-
-            if let message = appState.statusMessage {
-                Text(message)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-
-            Divider()
-
-            // File actions
-            Text("Files")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-
-            if appState.lastRecordingAudioURL != nil {
-                Button {
-                    appState.openAudioInFinder()
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "waveform")
-                            .font(.system(size: 10))
-                            .frame(width: 16)
-                        Text("Show audio file in Finder")
-                            .font(.caption)
-                        Spacer()
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-                .buttonStyle(.borderless)
-            }
-
-            if appState.lastRecordingMarkdownURL != nil {
-                Button {
-                    appState.openTranscriptInFinder()
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "doc.text")
-                            .font(.system(size: 10))
-                            .frame(width: 16)
-                        Text("Show transcript in Finder")
-                            .font(.caption)
-                        Spacer()
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-                .buttonStyle(.borderless)
-            }
-
-            Button {
-                appState.openOutputFolder()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "folder")
-                        .font(.system(size: 10))
-                        .frame(width: 16)
-                    Text("Open output folder")
-                        .font(.caption)
-                    Spacer()
-                    Image(systemName: "arrow.up.right.square")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            .buttonStyle(.borderless)
-
-            Divider()
-
-            // Server actions
-            Text("Server")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-
-            if let meetingId = appState.lastUploadedMeetingId {
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle")
+                if appState.lastUploadedMeetingId != nil {
+                    Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 10))
                         .foregroundStyle(.green)
-                        .frame(width: 16)
-                    Text("Uploaded")
-                        .font(.caption)
+                    Text("Synced to server")
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
-                    Text(meetingId.prefix(8) + "...")
-                        .font(.system(.caption2, design: .monospaced))
-                        .foregroundStyle(.tertiary)
-                }
-
-                HStack(spacing: 8) {
-                    Button {
-                        appState.openInBrowser()
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "safari")
-                                .font(.system(size: 10))
-                            Text("View in browser")
-                                .font(.caption)
-                        }
-                    }
-                    .buttonStyle(.borderless)
-
-                    Spacer()
-
-                    Button {
-                        appState.deleteFromServer()
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "trash")
-                                .font(.system(size: 10))
-                            Text("Remove from server")
-                                .font(.caption)
-                        }
-                        .foregroundStyle(.red)
-                    }
-                    .buttonStyle(.borderless)
-                }
-            } else {
-                HStack(spacing: 6) {
-                    Image(systemName: "xmark.circle")
+                } else if appState.isTranscribing {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.blue)
+                    Text("Will sync after transcription")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Image(systemName: "exclamationmark.circle")
                         .font(.system(size: 10))
                         .foregroundStyle(.orange)
-                        .frame(width: 16)
-                    Text("Not uploaded (server offline)")
-                        .font(.caption)
+                    Text("Not synced (server offline)")
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
+                Spacer()
             }
-
-            Divider()
-
-            // New recording button
-            Button {
-                appState.dismissPostRecording()
-            } label: {
-                HStack {
-                    Image(systemName: "plus.circle")
-                        .font(.system(size: 12))
-                    Text("New Recording")
-                        .font(.system(.caption, design: .rounded, weight: .semibold))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 5)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.blue)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+    }
+
+    // MARK: - Action Button
+
+    @ViewBuilder
+    private func actionButton(
+        icon: String,
+        iconColor: Color,
+        label: String,
+        enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            action()
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 16))
+                    .foregroundStyle(enabled ? iconColor : .gray.opacity(0.4))
+                Text(label)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(enabled ? .primary : .tertiary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(Color.gray.opacity(0.06))
+            .cornerRadius(8)
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
     }
 
     // MARK: - Helpers
