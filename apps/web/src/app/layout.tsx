@@ -28,18 +28,18 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-gray-50">
-        <nav className="border-b border-gray-200 bg-white">
+      <body className="min-h-full flex flex-col bg-gray-50 dark:bg-gray-950">
+        <nav className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
           <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
             <Link
               href="/"
-              className="text-lg font-bold text-gray-900 tracking-tight"
+              className="text-lg font-bold text-gray-900 dark:text-gray-100 tracking-tight"
             >
               MeetingScribe
             </Link>
             <Link
               href="/settings"
-              className="text-sm font-medium text-gray-600 hover:text-gray-900"
+              className="text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
             >
               Settings
             </Link>

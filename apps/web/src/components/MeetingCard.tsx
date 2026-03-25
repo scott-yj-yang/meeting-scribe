@@ -30,15 +30,15 @@ export default function MeetingCard({
   return (
     <Link
       href={`/meetings/${id}`}
-      className="block rounded-lg border border-gray-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
+      className="block rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-5 shadow-sm transition-shadow hover:shadow-md"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-base font-semibold text-gray-900">
+          <h3 className="truncate text-base font-semibold text-gray-900 dark:text-gray-100">
             {title}
           </h3>
-          <p className="mt-1 text-sm text-gray-500">{formattedDate}</p>
-          <p className="mt-0.5 text-sm text-gray-500">
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{formattedDate}</p>
+          <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
             {formatDuration(duration)}
           </p>
         </div>

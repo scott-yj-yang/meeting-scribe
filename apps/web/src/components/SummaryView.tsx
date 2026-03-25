@@ -97,7 +97,7 @@ export default function SummaryView({ content, meetingId }: SummaryViewProps) {
             <span className="text-xs text-red-600">{notionError}</span>
           )}
         </div>
-        <div className="prose prose-sm max-w-none">
+        <div className="prose prose-sm dark:prose-invert max-w-none">
           <ReactMarkdown>{content}</ReactMarkdown>
         </div>
       </div>
@@ -106,7 +106,7 @@ export default function SummaryView({ content, meetingId }: SummaryViewProps) {
 
   return (
     <div className="py-12 text-center">
-      <p className="mb-4 text-sm text-gray-500">No summary yet.</p>
+      <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">No summary yet.</p>
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
       <button
         onClick={handleSummarize}
