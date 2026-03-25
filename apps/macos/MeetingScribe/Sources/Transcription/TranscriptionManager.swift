@@ -60,7 +60,33 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
     }
 
     func processSampleBuffer(_ sampleBuffer: CMSampleBuffer, speaker: String) {
-        _ = sampleBuffer
+        guard let pcmBuffer = convertToPCMBuffer(sampleBuffer) else { return }
+        recognitionRequest?.append(pcmBuffer)
+    }
+
+    private func convertToPCMBuffer(_ sampleBuffer: CMSampleBuffer) -> AVAudioPCMBuffer? {
+        guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer),
+              let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc) else {
+            return nil
+        }
+        guard let format = AVAudioFormat(streamDescription: asbd) else { return nil }
+
+        let frameCount = CMSampleBufferGetNumSamples(sampleBuffer)
+        guard let pcmBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frameCount)) else {
+            return nil
+        }
+        pcmBuffer.frameLength = AVAudioFrameCount(frameCount)
+
+        guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { return nil }
+
+        var length = 0
+        var dataPointer: UnsafeMutablePointer<Int8>?
+        CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: nil, totalLengthOut: &length, dataPointerOut: &dataPointer)
+
+        guard let src = dataPointer, let dst = pcmBuffer.floatChannelData?[0] else { return nil }
+        memcpy(dst, src, min(length, Int(pcmBuffer.frameCapacity) * MemoryLayout<Float>.size))
+
+        return pcmBuffer
     }
 
     /// Call when recording stops
