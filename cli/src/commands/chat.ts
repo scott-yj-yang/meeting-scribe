@@ -13,8 +13,8 @@ export const chatCommand = new Command("chat")
     const client = new APIClient();
 
     try {
-      const meeting = await client.getMeeting(meetingId);
-      const transcript: string = meeting.transcript ?? "";
+      // Fetch formatted transcript markdown
+      const transcript = await client.exportMeeting(meetingId);
 
       if (!transcript) {
         console.error(
@@ -23,7 +23,6 @@ export const chatCommand = new Command("chat")
         process.exit(1);
       }
 
-      // Write transcript to a temp file
       const tmpFile = join(tmpdir(), `meetingscribe-chat-${meetingId}.md`);
       writeFileSync(tmpFile, transcript, "utf-8");
 
