@@ -375,10 +375,31 @@ class AppState: ObservableObject {
         }
     }
 
-    func deleteLocally() {
+    @Published var showDeleteConfirm = false
+
+    func promptDelete() {
+        showDeleteConfirm = true
+    }
+
+    func confirmDelete(alsoFromServer: Bool) {
         guard let meeting = currentMeeting else { return }
+
+        if alsoFromServer, let serverId = meeting.serverMeetingId {
+            Task {
+                guard let url = URL(string: "\(serverURL)/api/meetings/\(serverId)") else { return }
+                var request = URLRequest(url: url)
+                request.httpMethod = "DELETE"
+                _ = try? await URLSession.shared.data(for: request)
+            }
+        }
+
         meetingStore.delete(meeting)
+        showDeleteConfirm = false
         dismissPostRecording()
+    }
+
+    func cancelDelete() {
+        showDeleteConfirm = false
     }
 
     func dismissPostRecording() {

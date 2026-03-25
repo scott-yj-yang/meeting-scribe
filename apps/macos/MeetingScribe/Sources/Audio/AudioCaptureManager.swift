@@ -1,6 +1,12 @@
 import AVFoundation
 @preconcurrency import ScreenCaptureKit
 
+struct AudioDevice: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let uid: String
+}
+
 @MainActor
 class AudioCaptureManager: ObservableObject {
     private let micCapture = MicrophoneCapture()
@@ -8,6 +14,9 @@ class AudioCaptureManager: ObservableObject {
 
     @Published var isCapturing = false
     @Published var captureMode: CaptureMode = .none
+    @Published var availableMics: [AudioDevice] = []
+    @Published var selectedMicID: String? = nil
+
     var micFormat: AVAudioFormat? { micCapture.format }
 
     var onMicAudio: (@Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void)?
@@ -19,8 +28,29 @@ class AudioCaptureManager: ObservableObject {
         case micAndSystem
     }
 
+    func refreshMicList() {
+        let devices = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.microphone, .external],
+            mediaType: .audio,
+            position: .unspecified
+        ).devices
+
+        availableMics = devices.map { device in
+            AudioDevice(id: device.uniqueID, name: device.localizedName, uid: device.uniqueID)
+        }
+
+        // Select default if none selected
+        if selectedMicID == nil, let defaultDevice = AVCaptureDevice.default(for: .audio) {
+            selectedMicID = defaultDevice.uniqueID
+        }
+    }
+
     func startCapture() async {
-        // Always start mic capture
+        // Set the selected mic as the preferred input device
+        if let micID = selectedMicID {
+            micCapture.preferredDeviceUID = micID
+        }
+
         let micHandler = onMicAudio
         micCapture.onAudioBuffer = { buffer, time in
             micHandler?(buffer, time)
@@ -33,7 +63,6 @@ class AudioCaptureManager: ObservableObject {
             return
         }
 
-        // Try system audio — if it fails, continue with mic only
         let sysHandler = onSystemAudio
         systemCapture.onAudioBuffer = { sampleBuffer in
             sysHandler?(sampleBuffer)

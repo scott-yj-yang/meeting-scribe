@@ -35,6 +35,7 @@ struct MenuBarView: View {
         .frame(width: 320)
         .onAppear {
             appState.checkServerStatus()
+            appState.audioCaptureManager.refreshMicList()
             Task { await appState.calendarManager.fetchCurrentAndUpcoming() }
         }
     }
@@ -288,6 +289,27 @@ struct MenuBarView: View {
                 .cornerRadius(8)
                 .padding(.horizontal, 16)
                 .padding(.bottom, 6)
+            }
+
+            // Mic selector
+            if appState.audioCaptureManager.availableMics.count > 1 {
+                HStack(spacing: 6) {
+                    Image(systemName: "mic")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                    Picker("", selection: Binding(
+                        get: { appState.audioCaptureManager.selectedMicID },
+                        set: { appState.audioCaptureManager.selectedMicID = $0 }
+                    )) {
+                        ForEach(appState.audioCaptureManager.availableMics) { mic in
+                            Text(mic.name).tag(Optional(mic.id))
+                        }
+                    }
+                    .labelsHidden()
+                    .font(.caption)
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 4)
             }
 
             // Start button
@@ -796,7 +818,7 @@ struct MenuBarView: View {
                         label: "Delete",
                         enabled: true
                     ) {
-                        withAnimation(.easeInOut(duration: 0.2)) { appState.deleteLocally() }
+                        withAnimation(.easeInOut(duration: 0.2)) { appState.promptDelete() }
                     }
 
                     actionButton(
@@ -843,6 +865,63 @@ struct MenuBarView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
+
+            // Delete confirmation
+            if appState.showDeleteConfirm {
+                Divider().padding(.horizontal, 12)
+
+                VStack(spacing: 8) {
+                    Text("Delete this meeting?")
+                        .font(.system(.caption, weight: .semibold))
+                    Text("Local files will be permanently removed.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+
+                    VStack(spacing: 4) {
+                        if appState.currentMeeting?.isSynced == true {
+                            Button {
+                                withAnimation { appState.confirmDelete(alsoFromServer: true) }
+                            } label: {
+                                Text("Delete everywhere (local + server)")
+                                    .font(.caption)
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.red)
+
+                            Button {
+                                withAnimation { appState.confirmDelete(alsoFromServer: false) }
+                            } label: {
+                                Text("Delete local only")
+                                    .font(.caption)
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                        } else {
+                            Button {
+                                withAnimation { appState.confirmDelete(alsoFromServer: false) }
+                            } label: {
+                                Text("Delete")
+                                    .font(.caption)
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.red)
+                        }
+
+                        Button {
+                            withAnimation { appState.cancelDelete() }
+                        } label: {
+                            Text("Cancel")
+                                .font(.caption)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+            }
         }
     }
 
