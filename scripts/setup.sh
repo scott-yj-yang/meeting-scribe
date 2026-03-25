@@ -43,6 +43,20 @@ echo "  ║  Self-hosted meeting transcription   ║"
 echo "  ╚══════════════════════════════════════╝"
 echo -e "${NC}"
 
+# ── 0. Xcode Command Line Tools ──────────────────────────
+step 0 "Checking Xcode Command Line Tools..."
+if xcode-select -p &>/dev/null; then
+    ok "Command Line Tools installed"
+else
+    echo "  Installing Xcode Command Line Tools (required for Swift)..."
+    xcode-select --install 2>/dev/null
+    echo ""
+    echo -e "  ${YELLOW}A system dialog should appear. Click 'Install' and wait for it to finish.${NC}"
+    echo -e "  ${YELLOW}Then re-run this script.${NC}"
+    echo ""
+    exit 0
+fi
+
 # ── 1. Homebrew ──────────────────────────────────────────
 step 1 "Checking Homebrew..."
 if command -v brew &>/dev/null; then
