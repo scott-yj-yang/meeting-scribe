@@ -198,12 +198,6 @@ class AppState: ObservableObject {
             markdown: markdown, title: title, date: startDate, directory: outputDirectory
         ) {
             lastRecordingMarkdownURL = fileURL
-            let recording = Recording(
-                id: UUID(), title: title, date: startDate,
-                duration: recordingDuration, filePath: fileURL.path
-            )
-            recentRecordings.insert(recording, at: 0)
-            if recentRecordings.count > 5 { recentRecordings.removeLast() }
         }
 
         // Auto-upload to server
@@ -239,6 +233,17 @@ class AppState: ObservableObject {
             lastUploadedMeetingId = nil
             statusMessage = "Saved locally (server offline)"
         }
+
+        // Save to recent recordings (now we have the server ID)
+        let recording = Recording(
+            id: UUID(), title: title, date: startDate,
+            duration: recordingDuration,
+            filePath: lastRecordingMarkdownURL?.path ?? "",
+            audioPath: audioURL.path,
+            serverMeetingId: lastUploadedMeetingId
+        )
+        recentRecordings.insert(recording, at: 0)
+        if recentRecordings.count > 5 { recentRecordings.removeLast() }
 
         showPostRecording = true
         meetingTitle = ""
@@ -290,6 +295,15 @@ class AppState: ObservableObject {
         }
     }
 
+    /// Show a past recording's summary panel
+    func showRecordingSummary(_ recording: Recording) {
+        lastRecordingMarkdownURL = recording.filePath.isEmpty ? nil : URL(fileURLWithPath: recording.filePath)
+        lastRecordingAudioURL = recording.audioPath.flatMap { URL(fileURLWithPath: $0) }
+        lastUploadedMeetingId = recording.serverMeetingId
+        statusMessage = recording.title
+        showPostRecording = true
+    }
+
     func dismissPostRecording() {
         showPostRecording = false
         lastRecordingAudioURL = nil
@@ -325,7 +339,9 @@ struct Recording: Identifiable {
     let title: String
     let date: Date
     let duration: TimeInterval
-    let filePath: String
+    let filePath: String        // markdown path
+    let audioPath: String?      // audio file path
+    let serverMeetingId: String? // uploaded meeting ID
 }
 
 enum ServerStatus {

@@ -432,19 +432,29 @@ struct MenuBarView: View {
                     .padding(.bottom, 8)
             } else {
                 ForEach(appState.recentRecordings.prefix(5)) { recording in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(recording.title)
-                                .font(.caption)
-                                .lineLimit(1)
-                            Text(timeAgo(from: recording.date))
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
+                    Button {
+                        appState.showRecordingSummary(recording)
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(recording.title)
+                                    .font(.caption)
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                Text(timeAgo(from: recording.date))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 8))
+                                .foregroundStyle(.tertiary)
                         }
-                        Spacer()
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 4)
+                        .contentShape(Rectangle())
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 3)
+                    .buttonStyle(.plain)
                 }
                 .padding(.bottom, 6)
             }

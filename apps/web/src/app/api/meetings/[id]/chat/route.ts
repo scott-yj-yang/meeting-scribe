@@ -88,7 +88,7 @@ Answer the user's questions about this meeting. Be concise, reference specific p
     start(controller) {
       console.log("[Chat] Spawning claude for meeting", id);
 
-      const claude = spawn("claude", ["-p", fullPrompt, "--no-input"], {
+      const claude = spawn("claude", ["-p", fullPrompt, "--print"], {
         env: {
           ...process.env,
           PATH: fullPath,
