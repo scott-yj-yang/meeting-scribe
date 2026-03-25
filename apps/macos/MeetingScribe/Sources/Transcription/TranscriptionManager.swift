@@ -30,8 +30,15 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
         isRestarting = false
         isActive = true
 
-        let status = SFSpeechRecognizer.authorizationStatus()
+        var status = SFSpeechRecognizer.authorizationStatus()
+
+        if status == .notDetermined {
+            print("[Transcription] Requesting speech recognition permission...")
+            status = await SpeechAuthHelper.requestAuthorization()
+        }
+
         guard status == .authorized else {
+            print("[Transcription] Speech recognition not authorized (status: \(status.rawValue))")
             throw TranscriptionError.notAuthorized
         }
 
