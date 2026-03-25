@@ -9,9 +9,18 @@ struct MeetingScribeApp: App {
             MenuBarView()
                 .environmentObject(appState)
         } label: {
-            Image(systemName: appState.isRecording ? "record.circle.fill" : "mic.circle")
-                .symbolRenderingMode(.hierarchical)
-                .foregroundColor(appState.isRecording ? .red : .primary)
+            HStack(spacing: 3) {
+                Image(systemName: appState.isRecording
+                    ? "waveform.circle.fill"
+                    : "doc.text.magnifyingglass")
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.system(size: 14))
+                if appState.isRecording {
+                    Circle()
+                        .fill(.red)
+                        .frame(width: 5, height: 5)
+                }
+            }
         }
         .menuBarExtraStyle(.window)
     }

@@ -11,20 +11,10 @@ final class AudioFileWriter: @unchecked Sendable {
     let fileURL: URL
 
     init(directory: String, title: String, date: Date) {
-        let expandedDir = NSString(string: directory).expandingTildeInPath
-        let audioDir = URL(fileURLWithPath: expandedDir).appendingPathComponent("audio")
-        try? FileManager.default.createDirectory(at: audioDir, withIntermediateDirectories: true)
-
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd-HH-mm-ss"
-        let dateStr = formatter.string(from: date)
-        let safeTitle = title
-            .replacingOccurrences(of: " ", with: "-")
-            .replacingOccurrences(of: ":", with: "-")
-            .replacingOccurrences(of: "/", with: "-")
-            .lowercased()
-
-        fileURL = audioDir.appendingPathComponent("\(dateStr)-\(safeTitle).wav")
+        // Store audio in the same organized meeting directory as the transcript
+        let meetingDir = LocalStorage.meetingDirectory(title: title, date: date, baseDirectory: directory)
+        try? FileManager.default.createDirectory(at: meetingDir, withIntermediateDirectories: true)
+        fileURL = meetingDir.appendingPathComponent("audio.wav")
     }
 
     /// Start writing audio at the given format from the microphone.

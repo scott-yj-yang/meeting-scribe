@@ -121,33 +121,38 @@ struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Notion-style title area
             VStack(alignment: .leading, spacing: 6) {
-                // Meeting type pill row
-                HStack(spacing: 6) {
-                    ForEach(meetingTypes, id: \.self) { type in
-                        Button {
-                            if appState.selectedMeetingType == type {
-                                appState.selectedMeetingType = nil
-                            } else {
-                                appState.selectedMeetingType = type
+                // Meeting type pill row — scrollable to prevent truncation
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 5) {
+                        ForEach(meetingTypes, id: \.self) { type in
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    if appState.selectedMeetingType == type {
+                                        appState.selectedMeetingType = nil
+                                    } else {
+                                        appState.selectedMeetingType = type
+                                    }
+                                }
+                            } label: {
+                                Text(type)
+                                    .font(.system(size: 9, weight: .medium))
+                                    .fixedSize()
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 3)
+                                    .background(
+                                        appState.selectedMeetingType == type
+                                            ? Color.blue
+                                            : Color.gray.opacity(0.12)
+                                    )
+                                    .foregroundStyle(
+                                        appState.selectedMeetingType == type
+                                            ? .white
+                                            : .secondary
+                                    )
+                                    .cornerRadius(10)
                             }
-                        } label: {
-                            Text(type)
-                                .font(.system(size: 10, weight: .medium))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(
-                                    appState.selectedMeetingType == type
-                                        ? Color.blue
-                                        : Color.gray.opacity(0.12)
-                                )
-                                .foregroundStyle(
-                                    appState.selectedMeetingType == type
-                                        ? .white
-                                        : .secondary
-                                )
-                                .cornerRadius(10)
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
 
@@ -258,27 +263,22 @@ struct MenuBarView: View {
                 .padding(.bottom, 6)
             }
 
-            // Record button
+            // Start button
             Button {
                 appState.toggleRecording()
             } label: {
                 HStack(spacing: 6) {
-                    Circle()
-                        .fill(.white.opacity(0.9))
-                        .frame(width: 10, height: 10)
-                        .overlay(
-                            Circle()
-                                .fill(.red)
-                                .frame(width: 6, height: 6)
-                        )
-                    Text("Start Recording")
+                    Image(systemName: "mic.circle.fill")
+                        .font(.system(size: 15))
+                        .symbolEffect(.pulse, options: .speed(0.5))
+                    Text("Start Session")
                         .font(.system(.caption, design: .rounded, weight: .semibold))
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 8)
             }
             .buttonStyle(.borderedProminent)
-            .tint(.red)
+            .tint(.blue)
             .padding(.horizontal, 16)
             .padding(.bottom, 10)
         }
