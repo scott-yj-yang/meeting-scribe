@@ -41,7 +41,10 @@ final class WhisperPostProcessor: @unchecked Sendable {
             "-of", outputBase,
             "-l", "auto",
             "--no-timestamps", "false",
-            "-pp",  // print progress
+            "-pp",       // print progress
+            "-ml", "80", // max segment length (chars) — prevents hallucination loops
+            "-bo", "3",  // best-of candidates — improves accuracy
+            "-et", "2.2", // entropy threshold — reject low-confidence (hallucinated) segments
         ]
 
         let stderrPipe = Pipe()

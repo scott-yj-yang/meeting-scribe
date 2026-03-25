@@ -14,6 +14,8 @@ final class AudioFileWriter: @unchecked Sendable {
     private let micURL: URL   // temp mic-only file
     private let sysURL: URL   // temp system-only file
     private let meetingDir: URL
+    private var micStartTime: Date?
+    private var sysStartTime: Date?
 
     init(directory: String, title: String, date: Date) {
         meetingDir = LocalStorage.meetingDirectory(title: title, date: date, baseDirectory: directory)
@@ -32,11 +34,13 @@ final class AudioFileWriter: @unchecked Sendable {
 
     /// Write mic buffer — direct, same format
     func write(buffer: AVAudioPCMBuffer) {
+        if micStartTime == nil { micStartTime = Date() }
         try? micFile?.write(from: buffer)
     }
 
     /// Write system audio buffer — convert format if needed
     func writeSystemAudio(sampleBuffer: CMSampleBuffer) {
+        if sysStartTime == nil { sysStartTime = Date() }
         guard let pcmBuffer = convertToPCMBuffer(sampleBuffer) else { return }
         guard let outFmt = outputFormat else { return }
 
@@ -70,13 +74,35 @@ final class AudioFileWriter: @unchecked Sendable {
         let sysExists = fm.fileExists(atPath: sysURL.path)
 
         if micExists && sysExists {
-            // Merge: mix both streams into one file
+            // Calculate timing offset between mic and system audio start
+            var sysDelay: Double = 0
+            if let micStart = micStartTime, let sysStart = sysStartTime {
+                sysDelay = sysStart.timeIntervalSince(micStart)
+                print("[AudioWriter] Stream offset: \(String(format: "%.3f", sysDelay))s (sys started \(sysDelay > 0 ? "after" : "before") mic)")
+            }
+
+            // Merge with offset correction and echo reduction
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/ffmpeg")
+
+            // Build filter: delay the later stream to align, then mix
+            let delayMs = Int(abs(sysDelay) * 1000)
+            var filterComplex: String
+            if sysDelay > 0.01 {
+                // System started after mic — delay mic or pad system
+                filterComplex = "[1:a]adelay=0|0[sys];[0:a]adelay=\(delayMs)|0[mic];[mic][sys]amix=inputs=2:duration=longest:normalize=0[out]"
+            } else if sysDelay < -0.01 {
+                // System started before mic — delay system
+                filterComplex = "[1:a]adelay=\(delayMs)|0[sys];[0:a][sys]amix=inputs=2:duration=longest:normalize=0[out]"
+            } else {
+                // Close enough — just mix
+                filterComplex = "[0:a][1:a]amix=inputs=2:duration=longest:normalize=0[out]"
+            }
+
             process.arguments = [
                 "-i", micURL.path,
                 "-i", sysURL.path,
-                "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=longest:dropout_transition=0[out]",
+                "-filter_complex", filterComplex,
                 "-map", "[out]",
                 "-ac", "1",
                 "-ar", "48000",
