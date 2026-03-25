@@ -1,12 +1,6 @@
 import Foundation
 
 /// Runs whisper.cpp on a saved audio file to produce a high-accuracy transcript.
-/// This replaces the live SpeechTranscriber transcript with a more accurate version.
-///
-/// Architecture:
-///   - During recording: SpeechTranscriber provides live (lower accuracy) transcript
-///   - After recording: whisper.cpp produces final (higher accuracy) transcript with diarization
-///   - The final transcript is what gets uploaded to the web app
 final class WhisperPostProcessor: @unchecked Sendable {
 
     struct TranscriptionResult {
@@ -14,34 +8,29 @@ final class WhisperPostProcessor: @unchecked Sendable {
         let segments: [TranscriptSegment]
     }
 
-    /// Path to the whisper-cpp binary
     private let whisperPath: String
-
-    /// Path to the GGML model file
     private let modelPath: String
 
+    /// Called on main thread with progress (0.0-1.0) and ETA string
+    var onProgress: (@MainActor (Double, String) -> Void)?
+
     init() {
-        // whisper-cpp 1.8+ installs as "whisper-cli"
         self.whisperPath = WhisperPostProcessor.findBinary("whisper-cli")
             ?? WhisperPostProcessor.findBinary("whisper-cpp")
             ?? "/opt/homebrew/bin/whisper-cli"
-
         self.modelPath = WhisperPostProcessor.findModel() ?? ""
     }
 
-    /// Check if whisper.cpp is available
     var isAvailable: Bool {
         FileManager.default.fileExists(atPath: whisperPath) &&
         FileManager.default.fileExists(atPath: modelPath)
     }
 
-    /// Transcribe an audio file using whisper.cpp
     func transcribe(audioFile: URL) async throws -> TranscriptionResult {
-        guard isAvailable else {
-            throw WhisperError.notInstalled
-        }
+        guard isAvailable else { throw WhisperError.notInstalled }
 
         let outputBase = NSTemporaryDirectory() + "meetingscribe-whisper-\(UUID().uuidString)"
+        let startTime = Date()
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: whisperPath)
@@ -50,16 +39,64 @@ final class WhisperPostProcessor: @unchecked Sendable {
             "-f", audioFile.path,
             "-otxt",
             "-of", outputBase,
-            "-l", "auto",          // Auto-detect language
+            "-l", "auto",
             "--no-timestamps", "false",
+            "-pp",  // print progress
         ]
 
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
+        let stderrPipe = Pipe()
+        let stdoutPipe = Pipe()
+        process.standardError = stderrPipe
+        process.standardOutput = stdoutPipe
+
+        // Parse progress from stderr in real-time
+        let progressCallback = onProgress
+        stderrPipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            guard !data.isEmpty, let line = String(data: data, encoding: .utf8) else { return }
+
+            // whisper outputs: "whisper_print_progress_callback: progress =  45%"
+            if line.contains("progress =") {
+                let parts = line.components(separatedBy: "=")
+                if let last = parts.last,
+                   let pctStr = last.trimmingCharacters(in: .whitespaces).components(separatedBy: "%").first,
+                   let pct = Double(pctStr.trimmingCharacters(in: .whitespaces)) {
+                    let progress = pct / 100.0
+                    let elapsed = Date().timeIntervalSince(startTime)
+
+                    // Calculate ETA
+                    var eta = ""
+                    if progress > 0.01 {
+                        let totalEstimate = elapsed / progress
+                        let remaining = totalEstimate - elapsed
+                        if remaining > 60 {
+                            eta = String(format: "~%.0fm left", remaining / 60)
+                        } else if remaining > 5 {
+                            eta = String(format: "~%.0fs left", remaining)
+                        } else {
+                            eta = "almost done"
+                        }
+                    }
+
+                    if let callback = progressCallback {
+                        Task { @MainActor in
+                            callback(progress, eta)
+                        }
+                    }
+                }
+            }
+        }
 
         try process.run()
-        process.waitUntilExit()
+
+        // Wait for completion without blocking MainActor
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            process.terminationHandler = { _ in
+                continuation.resume()
+            }
+        }
+
+        stderrPipe.fileHandleForReading.readabilityHandler = nil
 
         guard process.terminationStatus == 0 else {
             throw WhisperError.transcriptionFailed
@@ -72,7 +109,6 @@ final class WhisperPostProcessor: @unchecked Sendable {
 
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // Single segment for the whole transcript — no artificial splitting
         let segments = trimmed.isEmpty ? [] : [
             TranscriptSegment(
                 speaker: "Speaker",
@@ -82,7 +118,6 @@ final class WhisperPostProcessor: @unchecked Sendable {
             )
         ]
 
-        // Cleanup
         try? FileManager.default.removeItem(atPath: txtFile)
 
         return TranscriptionResult(text: trimmed, segments: segments)
@@ -106,13 +141,11 @@ final class WhisperPostProcessor: @unchecked Sendable {
             "ggml-medium.bin",
             "ggml-base.bin",
         ]
-
         let searchDirs = [
             "\(NSHomeDirectory())/.local/share/whisper-cpp",
             "/opt/homebrew/share/whisper-cpp",
             "/usr/local/share/whisper-cpp",
         ]
-
         for dir in searchDirs {
             for model in modelNames {
                 let path = "\(dir)/\(model)"
@@ -121,7 +154,6 @@ final class WhisperPostProcessor: @unchecked Sendable {
                 }
             }
         }
-
         return nil
     }
 

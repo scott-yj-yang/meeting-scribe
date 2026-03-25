@@ -706,23 +706,42 @@ struct MenuBarView: View {
 
             // Transcription progress (shown while whisper is running)
             if appState.isTranscribing {
-                HStack(spacing: 10) {
-                    ProgressView()
-                        .scaleEffect(0.7)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Transcribing audio...")
-                            .font(.system(.caption, weight: .medium))
-                        if let eta = appState.transcriptionETA {
-                            Text("Estimated time: \(eta)")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .scaleEffect(0.6)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Transcribing audio...")
+                                .font(.system(.caption, weight: .medium))
+                            if let eta = appState.transcriptionETA {
+                                Text(eta)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer()
+                        Text("\(Int(appState.transcriptionProgress * 100))%")
+                            .font(.system(.caption, design: .monospaced, weight: .medium))
+                            .foregroundStyle(.blue)
+                    }
+
+                    // Progress bar
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(Color.gray.opacity(0.15))
+                                .frame(height: 4)
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(Color.blue)
+                                .frame(width: geo.size.width * appState.transcriptionProgress, height: 4)
+                                .animation(.easeInOut(duration: 0.3), value: appState.transcriptionProgress)
                         }
                     }
+                    .frame(height: 4)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.blue.opacity(0.06))
+                .background(Color.blue.opacity(0.04))
 
                 Divider().padding(.horizontal, 12)
             }

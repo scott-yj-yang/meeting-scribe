@@ -19,6 +19,7 @@ class AppState: ObservableObject {
     @Published var showPostRecording = false
     @Published var isTranscribing = false
     @Published var transcriptionETA: String? = nil
+    @Published var transcriptionProgress: Double = 0
     @Published var lastTranscriptSnippet: String? = nil
     @Published var currentMeeting: LocalMeeting? = nil
 
@@ -177,10 +178,16 @@ class AppState: ObservableObject {
             : meetingTitle.trimmingCharacters(in: .whitespacesAndNewlines)
 
         isTranscribing = true
+        transcriptionProgress = 0
         showPostRecording = true
-        let etaSeconds = max(5, Int(recordingDuration / 10))
-        transcriptionETA = formatETA(etaSeconds)
+        transcriptionETA = "estimating..."
         statusMessage = "Transcribing..."
+
+        // Wire up progress callback
+        whisperProcessor.onProgress = { [weak self] progress, eta in
+            self?.transcriptionProgress = progress
+            self?.transcriptionETA = eta
+        }
 
         // Transcribe
         var segments: [TranscriptSegment] = []
