@@ -70,21 +70,22 @@ final class WhisperPostProcessor: @unchecked Sendable {
             throw WhisperError.outputNotFound
         }
 
-        // Parse the text into segments (simple line-based parsing)
-        let lines = text.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-        let segments = lines.enumerated().map { index, line in
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Single segment for the whole transcript — no artificial splitting
+        let segments = trimmed.isEmpty ? [] : [
             TranscriptSegment(
                 speaker: "Speaker",
-                text: line.trimmingCharacters(in: .whitespaces),
-                startTime: TimeInterval(index * 5),  // Approximate timing
-                endTime: TimeInterval((index + 1) * 5)
+                text: trimmed,
+                startTime: 0,
+                endTime: 0
             )
-        }
+        ]
 
         // Cleanup
         try? FileManager.default.removeItem(atPath: txtFile)
 
-        return TranscriptionResult(text: text, segments: segments)
+        return TranscriptionResult(text: trimmed, segments: segments)
     }
 
     // MARK: - Private
