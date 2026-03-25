@@ -11,7 +11,10 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as Partial<CreateMeetingInput>;
 
-    const { title, date, duration, audioSources, meetingType, rawMarkdown, segments } = body;
+    const {
+      title, date, duration, audioSources, meetingType, rawMarkdown, segments,
+      calendarEventId, calendarTitle, calendarOrganizer, calendarAttendees, calendarStart, calendarEnd,
+    } = body as Record<string, any>;
 
     if (!title || !date || duration === undefined || !rawMarkdown || !segments) {
       return NextResponse.json(
@@ -27,6 +30,12 @@ export async function POST(request: Request) {
         duration,
         audioSources: audioSources ?? [],
         meetingType: meetingType ?? null,
+        calendarEventId: calendarEventId ?? null,
+        calendarTitle: calendarTitle ?? null,
+        calendarOrganizer: calendarOrganizer ?? null,
+        calendarAttendees: calendarAttendees ?? [],
+        calendarStart: calendarStart ? new Date(calendarStart) : null,
+        calendarEnd: calendarEnd ? new Date(calendarEnd) : null,
         transcript: {
           create: {
             rawMarkdown,

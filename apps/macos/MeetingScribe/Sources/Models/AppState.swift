@@ -9,6 +9,9 @@ class AppState: ObservableObject {
     @Published var serverStatus: ServerStatus = .unknown
     @Published var statusMessage: String? = nil
     @Published var meetingTitle: String = ""
+    @Published var selectedCalendarEvent: CalendarManager.CalendarEvent? = nil
+
+    let calendarManager = CalendarManager()
 
     @AppStorage("serverURL") var serverURL = "http://localhost:3000"
     @AppStorage("outputDirectory") var outputDirectory = "~/MeetingScribe"
@@ -156,6 +159,19 @@ class AppState: ObservableObject {
             if recentRecordings.count > 5 { recentRecordings.removeLast() }
         }
 
+        // Build calendar info if we have a linked event
+        var calInfo: MeetingAPIClient.CalendarInfo? = nil
+        if let event = selectedCalendarEvent {
+            calInfo = MeetingAPIClient.CalendarInfo(
+                eventId: event.id,
+                title: event.title,
+                organizer: event.organizer,
+                attendees: event.attendees,
+                start: event.startDate,
+                end: event.endDate
+            )
+        }
+
         let client = MeetingAPIClient(serverURL: serverURL)
         do {
             _ = try await client.uploadMeeting(
@@ -164,7 +180,8 @@ class AppState: ObservableObject {
                 audioSources: ["microphone"],
                 meetingType: nil,
                 rawMarkdown: markdown,
-                segments: segments
+                segments: segments,
+                calendar: calInfo
             )
             statusMessage = "\(title) saved (\(segments.count) segments)"
         } catch {
@@ -178,8 +195,9 @@ class AppState: ObservableObject {
             statusMessage = "Saved locally (server offline)"
         }
 
-        // Clear title for next recording
+        // Clear for next recording
         meetingTitle = ""
+        selectedCalendarEvent = nil
         print("[Recording] Complete: \(title) — \(segments.count) segments")
     }
 

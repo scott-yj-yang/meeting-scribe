@@ -16,6 +16,7 @@ struct MenuBarView: View {
         .frame(width: 300)
         .onAppear {
             appState.checkServerStatus()
+            Task { await appState.calendarManager.fetchCurrentAndUpcoming() }
         }
     }
 
@@ -24,10 +25,8 @@ struct MenuBarView: View {
     @ViewBuilder
     private var mainPanel: some View {
         if appState.isRecording {
-            // Recording state
             RecordingIndicator(duration: appState.recordingDuration)
 
-            // Live transcript (only if enabled)
             if appState.enableLiveTranscript && !appState.transcriptionManager.liveText.isEmpty {
                 ScrollView {
                     Text(appState.transcriptionManager.liveText)
@@ -47,10 +46,65 @@ struct MenuBarView: View {
             .buttonStyle(.borderedProminent)
             .tint(.red)
         } else {
-            // Pre-recording: title input
+            // Meeting title
             TextField("Meeting title (optional)", text: $appState.meetingTitle)
                 .textFieldStyle(.roundedBorder)
                 .font(.caption)
+
+            // Calendar suggestion
+            if let event = appState.calendarManager.suggestedEvent {
+                HStack(spacing: 6) {
+                    Image(systemName: "calendar")
+                        .font(.caption2)
+                        .foregroundStyle(.blue)
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(event.title)
+                            .font(.caption)
+                            .fontWeight(.medium)
+                        if !event.attendees.isEmpty {
+                            Text(event.attendees.prefix(3).joined(separator: ", "))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    Spacer()
+
+                    Button("Use") {
+                        appState.meetingTitle = event.title
+                        appState.selectedCalendarEvent = event
+                    }
+                    .font(.caption2)
+                    .buttonStyle(.borderless)
+                }
+                .padding(6)
+                .background(Color.blue.opacity(0.08))
+                .cornerRadius(6)
+            }
+
+            // More upcoming events
+            if !appState.calendarManager.upcomingEvents.isEmpty
+                && appState.calendarManager.currentEvent == nil {
+                ForEach(appState.calendarManager.upcomingEvents.prefix(2)) { event in
+                    HStack(spacing: 6) {
+                        Text(event.startDate, style: .time)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 50, alignment: .leading)
+                        Text(event.title)
+                            .font(.caption)
+                            .lineLimit(1)
+                        Spacer()
+                        Button("Use") {
+                            appState.meetingTitle = event.title
+                            appState.selectedCalendarEvent = event
+                        }
+                        .font(.caption2)
+                        .buttonStyle(.borderless)
+                    }
+                }
+            }
 
             Button("Start Recording") {
                 appState.toggleRecording()
@@ -80,7 +134,6 @@ struct MenuBarView: View {
 
         Divider()
 
-        // Recent recordings
         Text("Recent")
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -106,25 +159,18 @@ struct MenuBarView: View {
 
         Divider()
 
-        Text("Server URL")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+        Text("Server URL").font(.caption).foregroundStyle(.secondary)
         TextField("http://localhost:3000", text: $appState.serverURL)
-            .textFieldStyle(.roundedBorder)
-            .font(.caption)
+            .textFieldStyle(.roundedBorder).font(.caption)
 
-        Text("Output Directory")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+        Text("Output Directory").font(.caption).foregroundStyle(.secondary)
         TextField("~/MeetingScribe", text: $appState.outputDirectory)
-            .textFieldStyle(.roundedBorder)
-            .font(.caption)
+            .textFieldStyle(.roundedBorder).font(.caption)
 
         Divider()
 
         Toggle("Live transcript (uses more CPU)", isOn: $appState.enableLiveTranscript)
             .font(.caption)
-
         Toggle("Save raw audio files", isOn: $appState.saveAudio)
             .font(.caption)
     }

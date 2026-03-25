@@ -8,16 +8,22 @@ datasource db {
 }
 
 model Meeting {
-  id           String      @id @default(uuid())
-  title        String
-  date         DateTime
-  duration     Int
-  audioSources String[]
-  meetingType  String?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-  transcript   Transcript?
-  summary      Summary?
+  id                String      @id @default(uuid())
+  title             String
+  date              DateTime
+  duration          Int
+  audioSources      String[]
+  meetingType       String?
+  calendarEventId   String?
+  calendarTitle     String?
+  calendarOrganizer String?
+  calendarAttendees String[]
+  calendarStart     DateTime?
+  calendarEnd       DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  transcript        Transcript?
+  summary           Summary?
 }
 
 model Transcript {
