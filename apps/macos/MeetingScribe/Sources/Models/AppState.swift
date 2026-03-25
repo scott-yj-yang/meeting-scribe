@@ -19,6 +19,7 @@ class AppState: ObservableObject {
     @Published var showPostRecording = false
     @Published var isTranscribing = false
     @Published var transcriptionETA: String? = nil
+    @Published var lastTranscriptSnippet: String? = nil
 
     let calendarManager = CalendarManager()
 
@@ -183,13 +184,18 @@ class AppState: ObservableObject {
                 segments = result.segments
                 print("[Whisper] Done — \(segments.count) segments")
                 statusMessage = "Transcription complete"
+                // Save snippet for display
+                let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                lastTranscriptSnippet = String(text.prefix(500))
             } catch {
                 print("[Whisper] Failed: \(error.localizedDescription)")
                 statusMessage = "Transcription failed. Audio saved."
+                lastTranscriptSnippet = nil
             }
         } else {
             print("[Whisper] Not installed.")
             statusMessage = "Install whisper-cpp for transcription"
+            lastTranscriptSnippet = nil
         }
         isTranscribing = false
         transcriptionETA = nil
@@ -251,7 +257,8 @@ class AppState: ObservableObject {
             duration: recordingDuration,
             filePath: lastRecordingMarkdownURL?.path ?? "",
             audioPath: audioURL.path,
-            serverMeetingId: lastUploadedMeetingId
+            serverMeetingId: lastUploadedMeetingId,
+            transcriptSnippet: lastTranscriptSnippet
         )
         recentRecordings.insert(recording, at: 0)
         if recentRecordings.count > 5 { recentRecordings.removeLast() }
@@ -310,6 +317,7 @@ class AppState: ObservableObject {
         lastRecordingMarkdownURL = recording.filePath.isEmpty ? nil : URL(fileURLWithPath: recording.filePath)
         lastRecordingAudioURL = recording.audioPath.flatMap { URL(fileURLWithPath: $0) }
         lastUploadedMeetingId = recording.serverMeetingId
+        lastTranscriptSnippet = recording.transcriptSnippet
         statusMessage = recording.title
         showPostRecording = true
     }
@@ -319,6 +327,7 @@ class AppState: ObservableObject {
         lastRecordingAudioURL = nil
         lastRecordingMarkdownURL = nil
         lastUploadedMeetingId = nil
+        lastTranscriptSnippet = nil
         statusMessage = nil
     }
 
@@ -356,9 +365,10 @@ struct Recording: Identifiable {
     let title: String
     let date: Date
     let duration: TimeInterval
-    let filePath: String        // markdown path
-    let audioPath: String?      // audio file path
-    let serverMeetingId: String? // uploaded meeting ID
+    let filePath: String
+    let audioPath: String?
+    let serverMeetingId: String?
+    let transcriptSnippet: String?
 }
 
 enum ServerStatus {

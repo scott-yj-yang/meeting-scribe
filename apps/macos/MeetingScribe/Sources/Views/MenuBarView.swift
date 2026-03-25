@@ -207,6 +207,35 @@ struct MenuBarView: View {
                 .padding(.bottom, 8)
             }
 
+            // Calendar access prompt
+            if appState.calendarManager.accessDenied {
+                HStack(spacing: 8) {
+                    Image(systemName: "calendar.badge.exclamationmark")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.orange)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Calendar access needed")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                        Text("Link recordings to your meetings")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Grant") {
+                        appState.calendarManager.openCalendarSettings()
+                    }
+                    .font(.caption2)
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.blue)
+                }
+                .padding(10)
+                .background(Color.orange.opacity(0.06))
+                .cornerRadius(8)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 6)
+            }
+
             // Record button
             Button {
                 appState.toggleRecording()
@@ -580,6 +609,35 @@ struct MenuBarView: View {
                 .background(Color.blue.opacity(0.06))
 
                 Divider().padding(.horizontal, 12)
+            }
+
+            // Transcript snippet
+            if let snippet = appState.lastTranscriptSnippet, !snippet.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Image(systemName: "text.quote")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.secondary)
+                        Text("Transcript preview")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .textCase(.uppercase)
+                    }
+
+                    ScrollView {
+                        Text(snippet)
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundStyle(.primary.opacity(0.85))
+                            .lineSpacing(2)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: 90)
+                }
+                .padding(10)
+                .background(Color.gray.opacity(0.05))
+                .cornerRadius(8)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 6)
             }
 
             // Action grid

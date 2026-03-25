@@ -1,12 +1,12 @@
 import EventKit
 import Foundation
+import AppKit
 
-/// Queries the user's calendar for current/upcoming meetings
-/// to auto-suggest what the recording is about.
 @MainActor
 class CalendarManager: ObservableObject {
     @Published var currentEvent: CalendarEvent?
     @Published var upcomingEvents: [CalendarEvent] = []
+    @Published var accessDenied = false
 
     private let store = EKEventStore()
     private var hasAccess = false
@@ -28,13 +28,20 @@ class CalendarManager: ObservableObject {
     func requestAccess() async {
         do {
             hasAccess = try await store.requestFullAccessToEvents()
+            accessDenied = !hasAccess
         } catch {
             print("[Calendar] Access denied: \(error.localizedDescription)")
             hasAccess = false
+            accessDenied = true
         }
     }
 
-    /// Find today's events: current, recent, and upcoming
+    func openCalendarSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     func fetchCurrentAndUpcoming() async {
         if !hasAccess {
             await requestAccess()
@@ -52,11 +59,10 @@ class CalendarManager: ObservableObject {
             calendars: nil
         )
 
-        // Deduplicate events that appear in multiple calendars (by title + start time)
         var seen = Set<String>()
         let ekEvents = store.events(matching: predicate)
             .filter { !$0.isAllDay }
-            .sorted { $0.startDate > $1.startDate } // Most recent first
+            .sorted { $0.startDate > $1.startDate }
             .filter { event in
                 let key = "\(event.title ?? "")_\(event.startDate.timeIntervalSince1970)"
                 if seen.contains(key) { return false }
@@ -75,14 +81,10 @@ class CalendarManager: ObservableObject {
             )
         }
 
-        // Currently happening event
         currentEvent = events.first { $0.isHappeningNow }
-
-        // All other events today (recent + upcoming, most recent first)
         upcomingEvents = events.filter { !$0.isHappeningNow }
     }
 
-    /// Get the best suggestion for what meeting is happening
     var suggestedEvent: CalendarEvent? {
         currentEvent ?? upcomingEvents.first
     }
