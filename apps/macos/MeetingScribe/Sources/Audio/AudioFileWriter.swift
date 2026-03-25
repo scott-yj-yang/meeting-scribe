@@ -90,13 +90,13 @@ final class AudioFileWriter: @unchecked Sendable {
             var filterComplex: String
             if sysDelay > 0.01 {
                 // System started after mic — delay mic or pad system
-                filterComplex = "[1:a]adelay=0|0[sys];[0:a]adelay=\(delayMs)|0[mic];[mic][sys]amix=inputs=2:duration=longest:normalize=0[out]"
+                filterComplex = "[0:a]volume=0.5,adelay=\(delayMs)|0[mic];[1:a]volume=0.5[sys];[mic][sys]amix=inputs=2:duration=longest[mixed];[mixed]dynaudnorm=p=0.95[out]"
             } else if sysDelay < -0.01 {
                 // System started before mic — delay system
-                filterComplex = "[1:a]adelay=\(delayMs)|0[sys];[0:a][sys]amix=inputs=2:duration=longest:normalize=0[out]"
+                filterComplex = "[0:a]volume=0.5[mic];[1:a]volume=0.5,adelay=\(delayMs)|0[sys];[mic][sys]amix=inputs=2:duration=longest[mixed];[mixed]dynaudnorm=p=0.95[out]"
             } else {
-                // Close enough — just mix
-                filterComplex = "[0:a][1:a]amix=inputs=2:duration=longest:normalize=0[out]"
+                // Close enough — just mix with volume reduction + normalization
+                filterComplex = "[0:a]volume=0.5[mic];[1:a]volume=0.5[sys];[mic][sys]amix=inputs=2:duration=longest[mixed];[mixed]dynaudnorm=p=0.95[out]"
             }
 
             process.arguments = [
