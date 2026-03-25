@@ -8,7 +8,7 @@ interface SearchBarProps {
   initialType?: string;
 }
 
-const FILTER_TYPES = ["All", "Standup", "1:1", "Team", "Planning"] as const;
+const FILTER_TYPES = ["All", "1:1", "Subgroup", "Lab Meeting", "Casual", "Standup"] as const;
 
 export default function SearchBar({
   initialQuery = "",

@@ -28,7 +28,7 @@ export default function MeetingTabs({
   segments,
   rawMarkdown,
 }: MeetingTabsProps) {
-  const [activeTab, setActiveTab] = useState<Tab>("Summary");
+  const [activeTab, setActiveTab] = useState<Tab>(summaryContent ? "Summary" : "Transcript");
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {

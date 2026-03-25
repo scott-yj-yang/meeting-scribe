@@ -1,11 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 
 export default function MeetingActions({ meetingId }: { meetingId: string }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [confirming, setConfirming] = useState(false);
+
+  const isDetailPage = pathname?.startsWith(`/meetings/${meetingId}`);
 
   const handleDelete = async () => {
     if (!confirming) {
@@ -14,7 +17,12 @@ export default function MeetingActions({ meetingId }: { meetingId: string }) {
     }
 
     await fetch(`/api/meetings/${meetingId}`, { method: "DELETE" });
-    router.refresh();
+
+    if (isDetailPage) {
+      router.push("/");
+    } else {
+      router.refresh();
+    }
     setConfirming(false);
   };
 

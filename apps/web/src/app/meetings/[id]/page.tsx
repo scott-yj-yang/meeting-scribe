@@ -4,20 +4,18 @@ import { prisma } from "@/lib/prisma";
 import { formatDuration } from "@/lib/markdown";
 import MeetingTabs from "@/components/MeetingTabs";
 import ChatLauncher from "@/components/ChatLauncher";
+import AutoSummarizeTrigger from "@/components/AutoSummarizeTrigger";
 
 const MEETING_TYPE_COLORS: Record<string, string> = {
+  "1:1": "bg-sky-50 text-sky-700 ring-sky-600/20 dark:bg-sky-950/50 dark:text-sky-300 dark:ring-sky-500/30",
+  Subgroup:
+    "bg-violet-50 text-violet-700 ring-violet-600/20 dark:bg-violet-950/50 dark:text-violet-300 dark:ring-violet-500/30",
+  "Lab Meeting":
+    "bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-950/50 dark:text-amber-300 dark:ring-amber-500/30",
+  Casual:
+    "bg-rose-50 text-rose-700 ring-rose-600/20 dark:bg-rose-950/50 dark:text-rose-300 dark:ring-rose-500/30",
   Standup:
     "bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/50 dark:text-emerald-300 dark:ring-emerald-500/30",
-  "1:1": "bg-sky-50 text-sky-700 ring-sky-600/20 dark:bg-sky-950/50 dark:text-sky-300 dark:ring-sky-500/30",
-  Team: "bg-violet-50 text-violet-700 ring-violet-600/20 dark:bg-violet-950/50 dark:text-violet-300 dark:ring-violet-500/30",
-  Planning:
-    "bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-950/50 dark:text-amber-300 dark:ring-amber-500/30",
-  Retrospective:
-    "bg-rose-50 text-rose-700 ring-rose-600/20 dark:bg-rose-950/50 dark:text-rose-300 dark:ring-rose-500/30",
-  "Sales Call":
-    "bg-orange-50 text-orange-700 ring-orange-600/20 dark:bg-orange-950/50 dark:text-orange-300 dark:ring-orange-500/30",
-  General:
-    "bg-gray-50 text-gray-700 ring-gray-600/20 dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-500/30",
 };
 
 function getTypeColor(type: string): string {
@@ -225,6 +223,9 @@ export default async function MeetingDetailPage({
         </a>
         <ChatLauncher meetingId={id} />
       </div>
+
+      {/* Auto-summarize trigger */}
+      <AutoSummarizeTrigger meetingId={meeting.id} hasSummary={meeting.summary !== null} />
 
       {/* Content tabs */}
       <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">

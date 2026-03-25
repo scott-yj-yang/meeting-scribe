@@ -8,16 +8,21 @@ export function getJobStatus(meetingId: string) {
   return jobs.get(meetingId) || null;
 }
 
-export function startSummarizeJob(meetingId: string): void {
+export function startSummarizeJob(meetingId: string, customInstruction?: string): void {
   jobs.set(meetingId, { status: "running" });
 
   // The web app runs from apps/web/, so the project root is ../../
   const projectRoot = join(process.cwd(), "../..");
   const promptsDir = process.env.MEETINGSCRIBE_PROMPTS_DIR || join(projectRoot, "prompts");
 
+  const args = ["summarize", meetingId];
+  if (customInstruction) {
+    args.push("--instruction", customInstruction);
+  }
+
   execFile(
     "meetingctl",
-    ["summarize", meetingId],
+    args,
     {
       timeout: 300000,
       cwd: projectRoot,
@@ -39,11 +44,11 @@ export function startSummarizeJob(meetingId: string): void {
             create: {
               meetingId,
               content: summaryContent,
-              promptUsed: "summarize",
+              promptUsed: customInstruction ? `summarize (custom: ${customInstruction})` : "summarize",
             },
             update: {
               content: summaryContent,
-              promptUsed: "summarize",
+              promptUsed: customInstruction ? `summarize (custom: ${customInstruction})` : "summarize",
               generatedAt: new Date(),
             },
           });

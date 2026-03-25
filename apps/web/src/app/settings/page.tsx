@@ -1,4 +1,24 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
+const AUTO_SUMMARIZE_KEY = "meetingscribe_auto_summarize";
+
 export default function SettingsPage() {
+  const [autoSummarize, setAutoSummarize] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setAutoSummarize(localStorage.getItem(AUTO_SUMMARIZE_KEY) === "true");
+    setMounted(true);
+  }, []);
+
+  function handleToggle() {
+    const next = !autoSummarize;
+    setAutoSummarize(next);
+    localStorage.setItem(AUTO_SUMMARIZE_KEY, String(next));
+  }
+
   return (
     <div>
       <div className="mb-8">
@@ -9,6 +29,37 @@ export default function SettingsPage() {
       </div>
 
       <div className="space-y-6">
+        {/* Auto-summarize Toggle */}
+        <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                Auto-summarize
+              </h2>
+              <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                Automatically summarize meetings after upload when no summary exists.
+              </p>
+            </div>
+            {mounted && (
+              <button
+                type="button"
+                role="switch"
+                aria-checked={autoSummarize}
+                onClick={handleToggle}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 ${
+                  autoSummarize ? "bg-blue-600" : "bg-gray-200 dark:bg-gray-700"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${
+                    autoSummarize ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            )}
+          </div>
+        </div>
+
         {/* Prompt Templates */}
         <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-4 shadow-sm">
           <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-2">

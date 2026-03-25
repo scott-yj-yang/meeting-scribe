@@ -4,12 +4,11 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 const MEETING_TYPES = [
-  "General",
-  "Standup",
   "1:1",
-  "Planning",
-  "Retrospective",
-  "Sales Call",
+  "Subgroup",
+  "Lab Meeting",
+  "Casual",
+  "Standup",
 ];
 
 export default function MeetingEditPage() {

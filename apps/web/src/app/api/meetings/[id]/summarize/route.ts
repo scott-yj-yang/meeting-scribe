@@ -27,7 +27,18 @@ export async function POST(request: Request, { params }: Params) {
       );
     }
 
-    startSummarizeJob(id);
+    // Read optional customInstruction from the request body
+    let customInstruction: string | undefined;
+    try {
+      const body = await request.json();
+      if (body.customInstruction && typeof body.customInstruction === "string") {
+        customInstruction = body.customInstruction;
+      }
+    } catch {
+      // Body may be empty or not JSON — that's fine, proceed without custom instruction
+    }
+
+    startSummarizeJob(id, customInstruction);
 
     return NextResponse.json({ status: "started", meetingId: id }, { status: 202 });
   } catch (error) {
