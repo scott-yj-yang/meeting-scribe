@@ -95,6 +95,7 @@ Answer the user's questions about this meeting. Be concise, reference specific p
           HOME: home,
         },
         shell: false,
+        stdio: ["ignore", "pipe", "pipe"],  // no stdin needed
       });
 
       let buffer = "";
