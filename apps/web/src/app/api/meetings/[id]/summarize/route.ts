@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateAuth, unauthorizedResponse } from "@/lib/auth";
-import { startSummarizeJob, getJobStatus } from "@/lib/summarize";
+import { startSummarizeJob, getJobStatus, clearJobStatus } from "@/lib/summarize";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -25,6 +25,11 @@ export async function POST(request: Request, { params }: Params) {
         { error: "Summarization already in progress" },
         { status: 409 }
       );
+    }
+
+    // Clear any completed/failed job so we can re-run
+    if (existingJob) {
+      clearJobStatus(id);
     }
 
     // Read optional customInstruction from the request body

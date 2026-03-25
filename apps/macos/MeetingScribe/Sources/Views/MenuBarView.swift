@@ -291,27 +291,6 @@ struct MenuBarView: View {
                 .padding(.bottom, 6)
             }
 
-            // Mic selector
-            if appState.audioCaptureManager.availableMics.count > 1 {
-                HStack(spacing: 6) {
-                    Image(systemName: "mic")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                    Picker("", selection: Binding(
-                        get: { appState.audioCaptureManager.selectedMicID },
-                        set: { appState.audioCaptureManager.selectedMicID = $0 }
-                    )) {
-                        ForEach(appState.audioCaptureManager.availableMics) { mic in
-                            Text(mic.name).tag(Optional(mic.id))
-                        }
-                    }
-                    .labelsHidden()
-                    .font(.caption)
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 4)
-            }
-
             // Start button
             Button {
                 appState.toggleRecording()
@@ -654,6 +633,23 @@ struct MenuBarView: View {
             }
 
             Divider()
+
+            // Microphone
+            if appState.audioCaptureManager.availableMics.count > 1 {
+                Text("Microphone").font(.caption2).foregroundStyle(.secondary)
+                Picker("", selection: Binding(
+                    get: { appState.audioCaptureManager.selectedMicID },
+                    set: { appState.audioCaptureManager.selectedMicID = $0 }
+                )) {
+                    ForEach(appState.audioCaptureManager.availableMics) { mic in
+                        Text(mic.name).tag(Optional(mic.id))
+                    }
+                }
+                .labelsHidden()
+                .font(.caption)
+
+                Divider()
+            }
 
             Toggle("Auto-sync to server after recording", isOn: $appState.autoPushToServer)
                 .font(.caption)

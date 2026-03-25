@@ -2,14 +2,27 @@ import { execFile } from "child_process";
 import { join } from "path";
 import { prisma } from "@/lib/prisma";
 
-const jobs = new Map<string, { status: "running" | "completed" | "failed"; result?: string; error?: string }>();
+const jobs = new Map<string, { status: "running" | "completed" | "failed"; result?: string; error?: string; startedAt: number }>();
 
 export function getJobStatus(meetingId: string) {
-  return jobs.get(meetingId) || null;
+  const job = jobs.get(meetingId);
+  if (!job) return null;
+
+  // Expire stale running jobs after 5 minutes
+  if (job.status === "running" && Date.now() - job.startedAt > 5 * 60 * 1000) {
+    jobs.set(meetingId, { ...job, status: "failed", error: "Timed out after 5 minutes" });
+    return jobs.get(meetingId) || null;
+  }
+
+  return job;
+}
+
+export function clearJobStatus(meetingId: string) {
+  jobs.delete(meetingId);
 }
 
 export function startSummarizeJob(meetingId: string, customInstruction?: string): void {
-  jobs.set(meetingId, { status: "running" });
+  jobs.set(meetingId, { status: "running", startedAt: Date.now() });
 
   // The web app runs from apps/web/, so the project root is ../../
   const projectRoot = join(process.cwd(), "../..");
