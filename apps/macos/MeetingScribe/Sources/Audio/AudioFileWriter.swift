@@ -1,73 +1,123 @@
 @preconcurrency import AVFoundation
 import Foundation
 
-/// Records audio buffers to a WAV file for whisper.cpp transcription.
-/// Accepts buffers from both mic and system audio, writing them all
-/// to a single file so whisper gets the full conversation.
+/// Records mic and system audio to separate WAV files, then merges them
+/// into a single file for whisper.cpp. This avoids choppy interleaving
+/// that happens when two async streams write to the same file.
 final class AudioFileWriter: @unchecked Sendable {
-    private var audioFile: AVAudioFile?
-    private var converter: AVAudioConverter?
+    private var micFile: AVAudioFile?
+    private var sysFile: AVAudioFile?
     private var outputFormat: AVAudioFormat?
-    let fileURL: URL
+    private var sysConverter: AVAudioConverter?
+
+    let fileURL: URL          // final merged output
+    private let micURL: URL   // temp mic-only file
+    private let sysURL: URL   // temp system-only file
+    private let meetingDir: URL
 
     init(directory: String, title: String, date: Date) {
-        // Store audio in the same organized meeting directory as the transcript
-        let meetingDir = LocalStorage.meetingDirectory(title: title, date: date, baseDirectory: directory)
+        meetingDir = LocalStorage.meetingDirectory(title: title, date: date, baseDirectory: directory)
         try? FileManager.default.createDirectory(at: meetingDir, withIntermediateDirectories: true)
         fileURL = meetingDir.appendingPathComponent("audio.wav")
+        micURL = meetingDir.appendingPathComponent(".mic_temp.wav")
+        sysURL = meetingDir.appendingPathComponent(".sys_temp.wav")
     }
 
-    /// Start writing audio at the given format from the microphone.
     func start(format: AVAudioFormat) throws {
         outputFormat = format
-        audioFile = try AVAudioFile(
-            forWriting: fileURL,
-            settings: format.settings
-        )
-        print("[AudioWriter] Writing at \(format.sampleRate) Hz, \(format.channelCount) ch")
+        micFile = try AVAudioFile(forWriting: micURL, settings: format.settings)
+        sysFile = try AVAudioFile(forWriting: sysURL, settings: format.settings)
+        print("[AudioWriter] Mic: \(format.sampleRate) Hz, \(format.channelCount) ch")
     }
 
-    /// Write a mic buffer (AVAudioPCMBuffer) directly
+    /// Write mic buffer — direct, same format
     func write(buffer: AVAudioPCMBuffer) {
-        try? audioFile?.write(from: buffer)
+        try? micFile?.write(from: buffer)
     }
 
-    /// Write a system audio buffer (CMSampleBuffer) by converting to PCM first
+    /// Write system audio buffer — convert format if needed
     func writeSystemAudio(sampleBuffer: CMSampleBuffer) {
         guard let pcmBuffer = convertToPCMBuffer(sampleBuffer) else { return }
-
-        // If system audio format differs from output, resample
-        guard let outFmt = outputFormat else {
-            try? audioFile?.write(from: pcmBuffer)
-            return
-        }
+        guard let outFmt = outputFormat else { return }
 
         if pcmBuffer.format.sampleRate == outFmt.sampleRate &&
            pcmBuffer.format.channelCount == outFmt.channelCount {
-            try? audioFile?.write(from: pcmBuffer)
+            try? sysFile?.write(from: pcmBuffer)
         } else {
-            // Convert to match output format
             if let converted = resample(buffer: pcmBuffer, to: outFmt) {
-                try? audioFile?.write(from: converted)
+                try? sysFile?.write(from: converted)
             }
         }
     }
 
+    /// Stop recording and merge the two files
     func stop() -> URL {
-        audioFile = nil
-        converter = nil
-        outputFormat = nil
+        micFile = nil
+        sysFile = nil
+        sysConverter = nil
+
+        // Merge mic + system audio using ffmpeg
+        mergeFiles()
+
         return fileURL
     }
 
     // MARK: - Private
+
+    private func mergeFiles() {
+        let fm = FileManager.default
+        let micExists = fm.fileExists(atPath: micURL.path)
+        let sysExists = fm.fileExists(atPath: sysURL.path)
+
+        if micExists && sysExists {
+            // Merge: mix both streams into one file
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/ffmpeg")
+            process.arguments = [
+                "-i", micURL.path,
+                "-i", sysURL.path,
+                "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=longest:dropout_transition=0[out]",
+                "-map", "[out]",
+                "-ac", "1",
+                "-ar", "48000",
+                "-y",
+                fileURL.path
+            ]
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+
+            do {
+                try process.run()
+                process.waitUntilExit()
+
+                if process.terminationStatus == 0 {
+                    print("[AudioWriter] Merged mic + system audio")
+                } else {
+                    // ffmpeg failed — fall back to mic-only
+                    print("[AudioWriter] Merge failed, using mic-only")
+                    try? fm.moveItem(at: micURL, to: fileURL)
+                }
+            } catch {
+                // ffmpeg not found — fall back to mic-only
+                print("[AudioWriter] ffmpeg not available, using mic-only")
+                try? fm.moveItem(at: micURL, to: fileURL)
+            }
+        } else if micExists {
+            try? fm.moveItem(at: micURL, to: fileURL)
+        } else if sysExists {
+            try? fm.moveItem(at: sysURL, to: fileURL)
+        }
+
+        // Clean up temp files
+        try? fm.removeItem(at: micURL)
+        try? fm.removeItem(at: sysURL)
+    }
 
     private func convertToPCMBuffer(_ sampleBuffer: CMSampleBuffer) -> AVAudioPCMBuffer? {
         guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer),
               let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc) else {
             return nil
         }
-
         guard let format = AVAudioFormat(streamDescription: asbd) else { return nil }
 
         let frameCount = CMSampleBufferGetNumSamples(sampleBuffer)
@@ -89,10 +139,10 @@ final class AudioFileWriter: @unchecked Sendable {
     }
 
     private func resample(buffer: AVAudioPCMBuffer, to outputFormat: AVAudioFormat) -> AVAudioPCMBuffer? {
-        if converter == nil || converter?.inputFormat != buffer.format {
-            converter = AVAudioConverter(from: buffer.format, to: outputFormat)
+        if sysConverter == nil || sysConverter?.inputFormat != buffer.format {
+            sysConverter = AVAudioConverter(from: buffer.format, to: outputFormat)
         }
-        guard let converter = converter else { return nil }
+        guard let converter = sysConverter else { return nil }
 
         let ratio = outputFormat.sampleRate / buffer.format.sampleRate
         let outputFrames = AVAudioFrameCount(Double(buffer.frameLength) * ratio)
