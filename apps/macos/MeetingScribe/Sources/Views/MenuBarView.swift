@@ -93,15 +93,76 @@ struct MenuBarView: View {
 
     @ViewBuilder
     private var preRecordingView: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // Title input
-            TextField("Meeting title (optional)", text: $appState.meetingTitle)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(.caption, design: .rounded))
+        VStack(alignment: .leading, spacing: 0) {
+            // Notion-style title area
+            VStack(alignment: .leading, spacing: 6) {
+                // Meeting type pill row
+                HStack(spacing: 6) {
+                    ForEach(meetingTypes, id: \.self) { type in
+                        Button {
+                            if appState.selectedMeetingType == type {
+                                appState.selectedMeetingType = nil
+                            } else {
+                                appState.selectedMeetingType = type
+                            }
+                        } label: {
+                            Text(type)
+                                .font(.system(size: 10, weight: .medium))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(
+                                    appState.selectedMeetingType == type
+                                        ? Color.blue
+                                        : Color.gray.opacity(0.12)
+                                )
+                                .foregroundStyle(
+                                    appState.selectedMeetingType == type
+                                        ? .white
+                                        : .secondary
+                                )
+                                .cornerRadius(10)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                // Title — large, clean, Notion-style
+                TextField("Untitled meeting", text: $appState.meetingTitle)
+                    .font(.system(size: 18, weight: .semibold, design: .rounded))
+                    .textFieldStyle(.plain)
+                    .foregroundStyle(.primary)
+
+                // Subtitle: date + linked event
+                HStack(spacing: 4) {
+                    Image(systemName: "clock")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                    Text(Date().formatted(.dateTime.weekday(.wide).month().day().hour().minute()))
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+
+                    if let event = appState.selectedCalendarEvent {
+                        Text("·")
+                            .foregroundStyle(.tertiary)
+                        Image(systemName: "link")
+                            .font(.system(size: 8))
+                            .foregroundStyle(.blue.opacity(0.7))
+                        Text(event.title)
+                            .font(.caption2)
+                            .foregroundStyle(.blue.opacity(0.7))
+                            .lineLimit(1)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 12)
 
             // Calendar event suggestion
             if let event = appState.calendarManager.suggestedEvent {
                 calendarSuggestion(event: event, isCurrent: event.isHappeningNow)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
             }
 
             // Today's other events
@@ -118,27 +179,38 @@ struct MenuBarView: View {
                         .foregroundStyle(.secondary)
                 }
                 .font(.caption2)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
             }
 
             // Record button
             Button {
                 appState.toggleRecording()
             } label: {
-                HStack {
-                    Image(systemName: "record.circle")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(.white.opacity(0.9))
+                        .frame(width: 10, height: 10)
+                        .overlay(
+                            Circle()
+                                .fill(.red)
+                                .frame(width: 6, height: 6)
+                        )
                     Text("Start Recording")
                         .font(.system(.caption, design: .rounded, weight: .semibold))
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
+                .padding(.vertical, 8)
             }
             .buttonStyle(.borderedProminent)
             .tint(.red)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 10)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+    }
+
+    private var meetingTypes: [String] {
+        ["Standup", "1:1", "Team", "Planning", "Interview"]
     }
 
     // MARK: - Recording

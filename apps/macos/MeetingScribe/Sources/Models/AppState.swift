@@ -9,6 +9,7 @@ class AppState: ObservableObject {
     @Published var serverStatus: ServerStatus = .unknown
     @Published var statusMessage: String? = nil
     @Published var meetingTitle: String = ""
+    @Published var selectedMeetingType: String? = nil
     @Published var selectedCalendarEvent: CalendarManager.CalendarEvent? = nil
 
     let calendarManager = CalendarManager()
@@ -178,7 +179,7 @@ class AppState: ObservableObject {
                 title: title, date: startDate,
                 duration: Int(recordingDuration),
                 audioSources: ["microphone"],
-                meetingType: nil,
+                meetingType: selectedMeetingType?.lowercased(),
                 rawMarkdown: markdown,
                 segments: segments,
                 calendar: calInfo
@@ -197,6 +198,7 @@ class AppState: ObservableObject {
 
         // Clear for next recording
         meetingTitle = ""
+        selectedMeetingType = nil
         selectedCalendarEvent = nil
         print("[Recording] Complete: \(title) — \(segments.count) segments")
     }
