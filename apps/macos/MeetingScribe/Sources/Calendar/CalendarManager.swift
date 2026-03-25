@@ -34,7 +34,7 @@ class CalendarManager: ObservableObject {
         }
     }
 
-    /// Find events happening now or starting in the next 15 minutes
+    /// Find today's events: current, recent, and upcoming
     func fetchCurrentAndUpcoming() async {
         if !hasAccess {
             await requestAccess()
@@ -42,18 +42,27 @@ class CalendarManager: ObservableObject {
         guard hasAccess else { return }
 
         let now = Date()
-        let soon = now.addingTimeInterval(15 * 60) // 15 minutes from now
-        let endWindow = now.addingTimeInterval(2 * 60 * 60) // 2 hours from now
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: now)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
 
         let predicate = store.predicateForEvents(
-            withStart: now.addingTimeInterval(-60 * 60), // Started up to 1 hour ago
-            end: endWindow,
+            withStart: startOfDay,
+            end: endOfDay,
             calendars: nil
         )
 
+        // Deduplicate events that appear in multiple calendars (by title + start time)
+        var seen = Set<String>()
         let ekEvents = store.events(matching: predicate)
-            .filter { !$0.isAllDay } // Skip all-day events
-            .sorted { $0.startDate < $1.startDate }
+            .filter { !$0.isAllDay }
+            .sorted { $0.startDate > $1.startDate } // Most recent first
+            .filter { event in
+                let key = "\(event.title ?? "")_\(event.startDate.timeIntervalSince1970)"
+                if seen.contains(key) { return false }
+                seen.insert(key)
+                return true
+            }
 
         let events = ekEvents.map { event in
             CalendarEvent(
@@ -69,10 +78,8 @@ class CalendarManager: ObservableObject {
         // Currently happening event
         currentEvent = events.first { $0.isHappeningNow }
 
-        // Upcoming events (starting within 15 min)
-        upcomingEvents = events.filter {
-            !$0.isHappeningNow && $0.startDate <= soon
-        }
+        // All other events today (recent + upcoming, most recent first)
+        upcomingEvents = events.filter { !$0.isHappeningNow }
     }
 
     /// Get the best suggestion for what meeting is happening

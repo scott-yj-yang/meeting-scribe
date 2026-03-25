@@ -83,15 +83,18 @@ struct MenuBarView: View {
                 .cornerRadius(6)
             }
 
-            // More upcoming events
-            if !appState.calendarManager.upcomingEvents.isEmpty
-                && appState.calendarManager.currentEvent == nil {
-                ForEach(appState.calendarManager.upcomingEvents.prefix(2)) { event in
+            // Today's events
+            if !appState.calendarManager.upcomingEvents.isEmpty {
+                Text("Today's meetings")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                ForEach(appState.calendarManager.upcomingEvents.prefix(5)) { event in
                     HStack(spacing: 6) {
                         Text(event.startDate, style: .time)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
-                            .frame(width: 50, alignment: .leading)
+                            .frame(width: 55, alignment: .leading)
                         Text(event.title)
                             .font(.caption)
                             .lineLimit(1)
