@@ -17,7 +17,9 @@ class AppState: ObservableObject {
     @AppStorage("serverURL") var serverURL = "http://localhost:3000"
     @AppStorage("outputDirectory") var outputDirectory = "~/MeetingScribe"
     @AppStorage("saveAudio") var saveAudio = true
-    @AppStorage("enableLiveTranscript") var enableLiveTranscript = false
+
+    @Published var liveTranscriptActive = false
+    private var liveTranscriptTimer: Timer?
 
     private var timer: Timer?
     private var recordingStartDate: Date?
@@ -38,15 +40,50 @@ class AppState: ObservableObject {
         }
     }
 
+    /// Toggle live transcript on for 60 seconds (audio check)
+    func toggleLiveTranscriptCheck() {
+        if liveTranscriptActive {
+            // Turn off
+            disableLiveTranscript()
+        } else {
+            // Turn on for 60 seconds
+            enableLiveTranscriptTemporarily()
+        }
+    }
+
+    private func enableLiveTranscriptTemporarily() {
+        liveTranscriptActive = true
+        liveTranscriptTimer?.invalidate()
+        liveTranscriptTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                self?.disableLiveTranscript()
+            }
+        }
+    }
+
+    private func disableLiveTranscript() {
+        liveTranscriptActive = false
+        liveTranscriptTimer?.invalidate()
+        liveTranscriptTimer = nil
+        transcriptionManager.reset()
+    }
+
     private func doStartRecording() async {
         let startDate = Date()
-        let useLive = enableLiveTranscript
 
         do {
-            // Only start live transcription if enabled (saves CPU)
-            if useLive {
-                try await transcriptionManager.setup()
+            // Always start live transcription for the first 60 seconds
+            try await transcriptionManager.setup()
+            liveTranscriptActive = true
+            liveTranscriptTimer?.invalidate()
+            liveTranscriptTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: false) { [weak self] _ in
+                Task { @MainActor in
+                    self?.liveTranscriptActive = false
+                    self?.transcriptionManager.reset()
+                    print("[Transcription] Auto-disabled live transcript after 60s")
+                }
             }
+
             let transcriber = transcriptionManager
 
             // Determine title
@@ -57,19 +94,19 @@ class AppState: ObservableObject {
             let writer = AudioFileWriter(directory: outputDirectory, title: title, date: startDate)
             self.audioFileWriter = writer
 
-            audioCaptureManager.onMicAudio = { buffer, time in
+            audioCaptureManager.onMicAudio = { [weak self] buffer, time in
                 nonisolated(unsafe) let buffer = buffer
                 writer.write(buffer: buffer)
-                if useLive {
-                    Task { @MainActor in
+                Task { @MainActor in
+                    if self?.liveTranscriptActive == true {
                         transcriber.processAudioBuffer(buffer, speaker: "Local")
                     }
                 }
             }
-            audioCaptureManager.onSystemAudio = { sampleBuffer in
+            audioCaptureManager.onSystemAudio = { [weak self] sampleBuffer in
                 nonisolated(unsafe) let sampleBuffer = sampleBuffer
-                if useLive {
-                    Task { @MainActor in
+                Task { @MainActor in
+                    if self?.liveTranscriptActive == true {
                         transcriber.processSampleBuffer(sampleBuffer, speaker: "Remote")
                     }
                 }
@@ -108,6 +145,9 @@ class AppState: ObservableObject {
         await audioCaptureManager.stopCapture()
         timer?.invalidate()
         timer = nil
+        liveTranscriptTimer?.invalidate()
+        liveTranscriptTimer = nil
+        liveTranscriptActive = false
         isRecording = false
         transcriptionManager.reset()
 

@@ -218,11 +218,10 @@ struct MenuBarView: View {
     @ViewBuilder
     private var recordingView: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Recording indicator
+            // Recording indicator + calendar badge
             HStack {
                 RecordingIndicator(duration: appState.recordingDuration)
                 Spacer()
-                // Linked calendar event badge
                 if let event = appState.selectedCalendarEvent {
                     HStack(spacing: 3) {
                         Image(systemName: "calendar")
@@ -239,18 +238,60 @@ struct MenuBarView: View {
                 }
             }
 
-            // Live transcript
-            if appState.enableLiveTranscript && !appState.transcriptionManager.liveText.isEmpty {
-                ScrollView {
-                    Text(appState.transcriptionManager.liveText)
-                        .font(.system(.caption, design: .rounded))
-                        .foregroundStyle(.primary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+            // Live transcript area
+            if appState.liveTranscriptActive {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(.green)
+                                .frame(width: 5, height: 5)
+                            Text("Audio check")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(.green)
+                                .textCase(.uppercase)
+                        }
+                        Spacer()
+                        Button {
+                            appState.toggleLiveTranscriptCheck()
+                        } label: {
+                            Text("Hide")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.borderless)
+                    }
+
+                    if !appState.transcriptionManager.liveText.isEmpty {
+                        Text(appState.transcriptionManager.liveText)
+                            .font(.system(.caption, design: .rounded))
+                            .foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .lineLimit(4)
+                    } else {
+                        Text("Listening...")
+                            .font(.system(.caption, design: .rounded))
+                            .foregroundStyle(.tertiary)
+                            .italic()
+                    }
                 }
-                .frame(maxHeight: 80)
                 .padding(8)
-                .background(Color.gray.opacity(0.08))
+                .background(Color.green.opacity(0.06))
                 .cornerRadius(6)
+            } else {
+                // Show "check audio" button when live transcript is off
+                Button {
+                    appState.toggleLiveTranscriptCheck()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "waveform")
+                            .font(.system(size: 10))
+                        Text("Check audio")
+                            .font(.caption2)
+                    }
+                    .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
             }
 
             // Stop button
@@ -446,8 +487,6 @@ struct MenuBarView: View {
 
             Divider()
 
-            Toggle("Live transcript (uses more CPU)", isOn: $appState.enableLiveTranscript)
-                .font(.caption)
             Toggle("Save raw audio files", isOn: $appState.saveAudio)
                 .font(.caption)
         }
