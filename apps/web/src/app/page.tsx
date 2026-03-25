@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { prisma } from "@/lib/prisma";
 import MeetingCard from "@/components/MeetingCard";
+import MeetingActions from "@/components/MeetingActions";
 import SearchBar from "@/components/SearchBar";
 
 const LIMIT = 20;
@@ -44,7 +45,7 @@ export default async function Home({
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Meetings</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Meetings</h1>
       </div>
 
       <div className="mb-6">
@@ -54,29 +55,33 @@ export default async function Home({
       </div>
 
       {meetings.length === 0 ? (
-        <div className="rounded-lg border border-gray-200 bg-white py-12 text-center">
-          <p className="text-sm text-gray-500">
+        <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 py-12 text-center">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             {q ? `No meetings found matching "${q}".` : "No meetings yet."}
           </p>
         </div>
       ) : (
         <div className="space-y-3">
           {meetings.map((meeting) => (
-            <MeetingCard
-              key={meeting.id}
-              id={meeting.id}
-              title={meeting.title}
-              date={meeting.date}
-              duration={meeting.duration}
-              meetingType={meeting.meetingType}
-              hasSummary={meeting.summary !== null}
-            />
+            <div key={meeting.id} className="flex items-center gap-2">
+              <div className="flex-1">
+                <MeetingCard
+                  id={meeting.id}
+                  title={meeting.title}
+                  date={meeting.date}
+                  duration={meeting.duration}
+                  meetingType={meeting.meetingType}
+                  hasSummary={meeting.summary !== null}
+                />
+              </div>
+              <MeetingActions meetingId={meeting.id} />
+            </div>
           ))}
         </div>
       )}
 
       {totalPages > 1 && (
-        <div className="mt-6 text-center text-sm text-gray-500">
+        <div className="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
           Page {page} of {totalPages}
         </div>
       )}
