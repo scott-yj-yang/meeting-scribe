@@ -10,7 +10,10 @@ export default function MeetingActions({ meetingId }: { meetingId: string }) {
 
   const isDetailPage = pathname?.startsWith(`/meetings/${meetingId}`);
 
-  const handleDelete = async () => {
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
     if (!confirming) {
       setConfirming(true);
       return;
@@ -26,18 +29,24 @@ export default function MeetingActions({ meetingId }: { meetingId: string }) {
     setConfirming(false);
   };
 
+  const handleCancel = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setConfirming(false);
+  };
+
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
       {confirming ? (
         <>
           <button
             onClick={handleDelete}
             className="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30"
           >
-            Confirm Delete
+            Confirm
           </button>
           <button
-            onClick={() => setConfirming(false)}
+            onClick={handleCancel}
             className="rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
           >
             Cancel
@@ -45,11 +54,7 @@ export default function MeetingActions({ meetingId }: { meetingId: string }) {
         </>
       ) : (
         <button
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setConfirming(true);
-          }}
+          onClick={handleDelete}
           className="rounded p-1 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400"
           title="Delete meeting"
         >

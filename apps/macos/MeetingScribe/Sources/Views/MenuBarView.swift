@@ -45,11 +45,24 @@ struct MenuBarView: View {
     @ViewBuilder
     private var mainPanel: some View {
         // Header
-        HStack {
+        HStack(spacing: 8) {
             Text("MeetingScribe")
                 .font(.system(.headline, design: .rounded))
                 .fontWeight(.bold)
             Spacer()
+            // Quick link to web dashboard
+            Button {
+                if let url = URL(string: appState.serverURL) {
+                    NSWorkspace.shared.open(url)
+                }
+            } label: {
+                Image(systemName: "globe")
+                    .font(.system(size: 11))
+                    .foregroundStyle(appState.serverStatus == .connected ? .blue : .gray.opacity(0.4))
+            }
+            .buttonStyle(.borderless)
+            .help("Open web dashboard")
+            .disabled(appState.serverStatus != .connected)
             // Server status dot
             Circle()
                 .fill(statusColor)
