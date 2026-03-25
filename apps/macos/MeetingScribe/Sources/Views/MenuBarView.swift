@@ -512,18 +512,19 @@ struct MenuBarView: View {
     private var postRecordingPanel: some View {
         // Header
         HStack {
-            Text("MeetingScribe")
-                .font(.system(.headline, design: .rounded))
-                .fontWeight(.bold)
-            Spacer()
             Button {
                 appState.dismissPostRecording()
             } label: {
-                Image(systemName: "xmark")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("Back")
+                        .font(.system(.caption, design: .rounded))
+                }
+                .foregroundStyle(.blue)
             }
             .buttonStyle(.borderless)
+            Spacer()
         }
         .padding(.horizontal, 16)
         .padding(.top, 14)
