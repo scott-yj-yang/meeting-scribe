@@ -8,6 +8,8 @@ struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 0) {
             if showSettings {
                 settingsPanel
+            } else if appState.showPostRecording {
+                postRecordingPanel
             } else {
                 mainPanel
             }
@@ -489,6 +491,194 @@ struct MenuBarView: View {
 
             Toggle("Save raw audio files", isOn: $appState.saveAudio)
                 .font(.caption)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
+    // MARK: - Post-recording Panel
+
+    @ViewBuilder
+    private var postRecordingPanel: some View {
+        // Header
+        HStack {
+            Text("MeetingScribe")
+                .font(.system(.headline, design: .rounded))
+                .fontWeight(.bold)
+            Spacer()
+            Button {
+                appState.dismissPostRecording()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+        .padding(.bottom, 8)
+
+        Divider().padding(.horizontal, 12)
+
+        VStack(alignment: .leading, spacing: 10) {
+            // Status
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                    .font(.system(size: 14))
+                Text("Recording complete")
+                    .font(.system(.caption, design: .rounded, weight: .semibold))
+            }
+
+            if let message = appState.statusMessage {
+                Text(message)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            Divider()
+
+            // File actions
+            Text("Files")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+
+            if appState.lastRecordingAudioURL != nil {
+                Button {
+                    appState.openAudioInFinder()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "waveform")
+                            .font(.system(size: 10))
+                            .frame(width: 16)
+                        Text("Show audio file in Finder")
+                            .font(.caption)
+                        Spacer()
+                        Image(systemName: "arrow.up.right.square")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .buttonStyle(.borderless)
+            }
+
+            if appState.lastRecordingMarkdownURL != nil {
+                Button {
+                    appState.openTranscriptInFinder()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "doc.text")
+                            .font(.system(size: 10))
+                            .frame(width: 16)
+                        Text("Show transcript in Finder")
+                            .font(.caption)
+                        Spacer()
+                        Image(systemName: "arrow.up.right.square")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .buttonStyle(.borderless)
+            }
+
+            Button {
+                appState.openOutputFolder()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "folder")
+                        .font(.system(size: 10))
+                        .frame(width: 16)
+                    Text("Open output folder")
+                        .font(.caption)
+                    Spacer()
+                    Image(systemName: "arrow.up.right.square")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .buttonStyle(.borderless)
+
+            Divider()
+
+            // Server actions
+            Text("Server")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+
+            if let meetingId = appState.lastUploadedMeetingId {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.green)
+                        .frame(width: 16)
+                    Text("Uploaded")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(meetingId.prefix(8) + "...")
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                }
+
+                HStack(spacing: 8) {
+                    Button {
+                        appState.openInBrowser()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "safari")
+                                .font(.system(size: 10))
+                            Text("View in browser")
+                                .font(.caption)
+                        }
+                    }
+                    .buttonStyle(.borderless)
+
+                    Spacer()
+
+                    Button {
+                        appState.deleteFromServer()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "trash")
+                                .font(.system(size: 10))
+                            Text("Remove from server")
+                                .font(.caption)
+                        }
+                        .foregroundStyle(.red)
+                    }
+                    .buttonStyle(.borderless)
+                }
+            } else {
+                HStack(spacing: 6) {
+                    Image(systemName: "xmark.circle")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.orange)
+                        .frame(width: 16)
+                    Text("Not uploaded (server offline)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Divider()
+
+            // New recording button
+            Button {
+                appState.dismissPostRecording()
+            } label: {
+                HStack {
+                    Image(systemName: "plus.circle")
+                        .font(.system(size: 12))
+                    Text("New Recording")
+                        .font(.system(.caption, design: .rounded, weight: .semibold))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 5)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.blue)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
