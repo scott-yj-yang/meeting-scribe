@@ -4,15 +4,32 @@ struct MenuBarView: View {
     @EnvironmentObject var appState: AppState
     @State private var showSettings = false
 
+    private enum Panel: Equatable {
+        case main, settings, postRecording
+    }
+
+    private var activePanel: Panel {
+        if showSettings { return .settings }
+        if appState.showPostRecording { return .postRecording }
+        return .main
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if showSettings {
-                settingsPanel
-            } else if appState.showPostRecording {
-                postRecordingPanel
-            } else {
-                mainPanel
+            Group {
+                switch activePanel {
+                case .settings:
+                    settingsPanel
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                case .postRecording:
+                    postRecordingPanel
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                case .main:
+                    mainPanel
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                }
             }
+            .animation(.easeInOut(duration: 0.2), value: activePanel)
         }
         .frame(width: 320)
         .onAppear {
@@ -44,11 +61,16 @@ struct MenuBarView: View {
         Divider().padding(.horizontal, 12)
 
         // Recording section
-        if appState.isRecording {
-            recordingView
-        } else {
-            preRecordingView
+        Group {
+            if appState.isRecording {
+                recordingView
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            } else {
+                preRecordingView
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            }
         }
+        .animation(.easeInOut(duration: 0.25), value: appState.isRecording)
 
         // Status message
         if let message = appState.statusMessage {
@@ -69,7 +91,7 @@ struct MenuBarView: View {
         // Footer
         HStack {
             Button {
-                showSettings = true
+                withAnimation(.easeInOut(duration: 0.2)) { showSettings = true }
             } label: {
                 Label("Settings", systemImage: "gear")
                     .font(.caption)
@@ -467,7 +489,7 @@ struct MenuBarView: View {
     private var settingsPanel: some View {
         HStack {
             Button {
-                showSettings = false
+                withAnimation(.easeInOut(duration: 0.2)) { showSettings = false }
             } label: {
                 Image(systemName: "chevron.left")
                     .font(.caption)
@@ -514,7 +536,7 @@ struct MenuBarView: View {
             // Header with back
             HStack {
                 Button {
-                    appState.dismissPostRecording()
+                    withAnimation(.easeInOut(duration: 0.2)) { appState.dismissPostRecording() }
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.left")
@@ -620,7 +642,7 @@ struct MenuBarView: View {
                         label: "New",
                         enabled: true
                     ) {
-                        appState.dismissPostRecording()
+                        withAnimation(.easeInOut(duration: 0.2)) { appState.dismissPostRecording() }
                     }
                 }
                 .padding(.horizontal, 16)
