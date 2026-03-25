@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { validateAuth, unauthorizedResponse } from "@/lib/auth";
 import { formatMeetingMarkdown } from "@/lib/markdown";
 import { spawn } from "child_process";
+import { homedir } from "os";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -23,7 +24,6 @@ export async function POST(request: NextRequest, { params }: Params) {
     });
   }
 
-  // Fetch meeting + transcript
   const meeting = await prisma.meeting.findUnique({
     where: { id },
     include: {
@@ -39,7 +39,6 @@ export async function POST(request: NextRequest, { params }: Params) {
     });
   }
 
-  // Build the transcript markdown
   const transcriptMd = meeting.transcript
     ? formatMeetingMarkdown({
         title: meeting.title,
@@ -51,7 +50,6 @@ export async function POST(request: NextRequest, { params }: Params) {
       })
     : "No transcript available.";
 
-  // Build conversation context
   const systemPrompt = `You are a helpful assistant for discussing a meeting. Here is the full meeting transcript:
 
 ---
@@ -61,7 +59,6 @@ ${transcriptMd}
 ${meeting.summary ? `Here is the existing summary:\n\n${meeting.summary.content}\n\n---\n\n` : ""}
 Answer the user's questions about this meeting. Be concise, reference specific parts of the transcript, and quote relevant passages when helpful.`;
 
-  // Build the full prompt with history
   let fullPrompt = systemPrompt + "\n\n";
   for (const msg of history || []) {
     if (msg.role === "user") {
@@ -70,39 +67,68 @@ Answer the user's questions about this meeting. Be concise, reference specific p
       fullPrompt += `Assistant: ${msg.content}\n\n`;
     }
   }
-  fullPrompt += `User: ${message}\n\nAssistant:`;
+  fullPrompt += `User: ${message}\n\nRespond directly to the user's question:`;
 
-  // Stream response from Claude Code
+  // Find claude binary
+  const home = homedir();
+  const extraPaths = [
+    `${home}/.local/bin`,
+    `${home}/.nvm/versions/node/v24.11.0/bin`,
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+  ].join(":");
+
+  const fullPath = `${extraPaths}:${process.env.PATH || ""}`;
+
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
     start(controller) {
+      console.log("[Chat] Spawning claude for meeting", id);
+
       const claude = spawn("claude", ["-p", fullPrompt, "--no-input"], {
-        env: { ...process.env, PATH: process.env.PATH || "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin" },
+        env: {
+          ...process.env,
+          PATH: fullPath,
+          HOME: home,
+        },
+        shell: false,
       });
 
       let buffer = "";
+      let hasOutput = false;
 
       claude.stdout.on("data", (data: Buffer) => {
+        hasOutput = true;
         const text = data.toString();
         buffer += text;
-        // Send as SSE
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text })}\n\n`));
       });
 
       claude.stderr.on("data", (data: Buffer) => {
-        // Ignore stderr (Claude Code progress output)
+        const text = data.toString();
+        console.log("[Chat] stderr:", text.substring(0, 200));
       });
 
       claude.on("close", (code: number) => {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, fullText: buffer })}\n\n`));
+        console.log("[Chat] Process exited with code", code, "output length:", buffer.length);
+        if (!hasOutput && code !== 0) {
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ text: "Error: Claude Code exited without output. Make sure it's installed and authenticated." })}\n\n`)
+          );
+        }
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`));
         controller.close();
       });
 
       claude.on("error", (err: Error) => {
+        console.error("[Chat] Spawn error:", err.message);
         controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ error: err.message })}\n\n`)
+          encoder.encode(`data: ${JSON.stringify({ text: `Error: ${err.message}` })}\n\n`)
         );
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`));
         controller.close();
       });
     },
