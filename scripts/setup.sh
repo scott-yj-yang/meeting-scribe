@@ -185,12 +185,12 @@ npx prisma generate 2>&1 | tail -1
 
 echo "  Applying database schema..."
 # prisma db push is the most reliable for fresh installs
-npx prisma db push --accept-data-loss 2>&1
+DATABASE_URL="$DB_URL" npx prisma db push --accept-data-loss 2>&1
 PUSH_EXIT=$?
 
 if [[ $PUSH_EXIT -ne 0 ]]; then
     echo "  Retrying with migrate dev..."
-    npx prisma migrate dev --name init --skip-generate 2>&1 | tail -5
+    DATABASE_URL="$DB_URL" npx prisma migrate dev --name init --skip-generate 2>&1 | tail -5
 fi
 
 # Verify tables exist
