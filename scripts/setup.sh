@@ -49,12 +49,16 @@ if xcode-select -p &>/dev/null; then
     ok "Command Line Tools installed"
 else
     echo "  Installing Xcode Command Line Tools (required for Swift)..."
+    echo "  A system dialog will appear — click 'Install'."
+    echo ""
     xcode-select --install 2>/dev/null
-    echo ""
-    echo -e "  ${YELLOW}A system dialog should appear. Click 'Install' and wait for it to finish.${NC}"
-    echo -e "  ${YELLOW}Then re-run this script.${NC}"
-    echo ""
-    exit 0
+
+    # Wait for installation to complete
+    echo "  Waiting for installation to finish..."
+    until xcode-select -p &>/dev/null; do
+        sleep 5
+    done
+    ok "Command Line Tools installed"
 fi
 
 # ── 1. Homebrew ──────────────────────────────────────────
@@ -196,12 +200,36 @@ ok "~/MeetingScribe/ ready"
 step 9 "Starting web server..."
 cd "$INSTALL_DIR/apps/web"
 
+# Build the app first for faster startup
+echo "  Building Next.js app..."
+npm run build 2>/dev/null || true
+
 # Kill any existing session
 tmux kill-session -t meetingscribe 2>/dev/null || true
 
 # Start new tmux session with the web server
-tmux new-session -d -s meetingscribe -c "$INSTALL_DIR/apps/web" "npm run dev"
-ok "Web server running in tmux session 'meetingscribe'"
+tmux new-session -d -s meetingscribe -c "$INSTALL_DIR/apps/web" "npm run dev 2>&1 | tee /tmp/meetingscribe-server.log"
+
+# Wait for server to be ready (check port 3000)
+echo "  Waiting for server to start..."
+set +e
+for i in $(seq 1 30); do
+    if curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 2>/dev/null | grep -q "200\|304"; then
+        break
+    fi
+    sleep 2
+    printf "  ."
+done
+echo ""
+
+# Verify it's running
+if curl -s -o /dev/null http://localhost:3000 2>/dev/null; then
+    ok "Web server running at http://localhost:3000"
+else
+    warn "Server may still be starting. Check logs: tmux attach -t meetingscribe"
+    warn "Or check: cat /tmp/meetingscribe-server.log"
+fi
+set -e
 echo "  → View logs: tmux attach -t meetingscribe"
 echo "  → Stop:      tmux kill-session -t meetingscribe"
 
