@@ -155,12 +155,17 @@ echo "  Installing npm packages..."
 npm install 2>&1 | tail -1
 ok "npm packages installed"
 
-# Create .env.local if missing
+# Create env files if missing
+DB_CONN_USER=$(whoami)
+DB_URL="postgresql://${DB_CONN_USER}@localhost:5432/$DB_NAME"
+
+if [[ ! -f .env ]]; then
+    echo "DATABASE_URL=\"$DB_URL\"" > .env
+    ok "Created .env"
+fi
 if [[ ! -f .env.local ]]; then
-    # Detect current user for database URL (macOS uses your username, not 'postgres')
-    DB_CONN_USER=$(whoami)
     cat > .env.local << EOF
-DATABASE_URL="postgresql://${DB_CONN_USER}@localhost:5432/$DB_NAME"
+DATABASE_URL="$DB_URL"
 MEETINGSCRIBE_API_KEY=""
 EOF
     ok "Created .env.local"
