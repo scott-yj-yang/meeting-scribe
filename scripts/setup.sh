@@ -74,24 +74,32 @@ fi
 # ── 2. System dependencies ───────────────────────────────
 step 2 "Installing dependencies..."
 DEPS=(node postgresql@17 whisper-cpp ffmpeg sox tmux)
+
+# Temporarily allow non-zero exits for brew commands
+set +e
 for dep in "${DEPS[@]}"; do
-    if brew list "$dep" &>/dev/null; then
+    if brew list "$dep" &>/dev/null 2>&1; then
         ok "$dep already installed"
     else
         echo "  Installing $dep..."
-        brew install "$dep" 2>/dev/null
-        ok "$dep installed"
+        brew install "$dep"
+        if [[ $? -eq 0 ]]; then
+            ok "$dep installed"
+        else
+            warn "$dep may have had warnings (continuing)"
+        fi
     fi
 done
 
 # Ensure PostgreSQL is running
-if ! brew services list | grep -q "postgresql.*started"; then
-    brew services start postgresql@17 2>/dev/null || brew services start postgresql 2>/dev/null || true
-    sleep 2
-    ok "PostgreSQL started"
+brew services start postgresql@17 2>/dev/null || brew services start postgresql 2>/dev/null || true
+sleep 2
+if brew services list 2>/dev/null | grep -q "postgresql.*started"; then
+    ok "PostgreSQL running"
 else
-    ok "PostgreSQL already running"
+    warn "PostgreSQL may need manual start: brew services start postgresql@17"
 fi
+set -e
 
 # ── 3. Whisper model ─────────────────────────────────────
 step 3 "Checking whisper model..."
@@ -134,22 +142,22 @@ EOF
 fi
 
 # Create database if it doesn't exist
+set +e
 if ! psql -lqt 2>/dev/null | cut -d \| -f 1 | grep -qw "$DB_NAME"; then
-    # Create user if needed
     psql postgres -tc "SELECT 1 FROM pg_roles WHERE rolname='$DB_USER'" 2>/dev/null | grep -q 1 || \
-        createuser -s "$DB_USER" 2>/dev/null || true
-    # Set password
-    psql postgres -c "ALTER USER $DB_USER WITH PASSWORD '$DB_PASS';" 2>/dev/null || true
-    createdb -U "$DB_USER" "$DB_NAME" 2>/dev/null || createdb "$DB_NAME" 2>/dev/null || true
+        createuser -s "$DB_USER" 2>/dev/null
+    psql postgres -c "ALTER USER $DB_USER WITH PASSWORD '$DB_PASS';" 2>/dev/null
+    createdb -U "$DB_USER" "$DB_NAME" 2>/dev/null || createdb "$DB_NAME" 2>/dev/null
     ok "Database created"
 else
     ok "Database already exists"
 fi
 
 # Run migrations
-npx prisma migrate deploy 2>/dev/null || npx prisma migrate dev --name init 2>/dev/null || true
+npx prisma migrate deploy 2>/dev/null || npx prisma migrate dev --name init 2>/dev/null
 npx prisma generate 2>/dev/null
 ok "Database migrated"
+set -e
 
 # ── 6. CLI setup ─────────────────────────────────────────
 step 6 "Setting up CLI..."
