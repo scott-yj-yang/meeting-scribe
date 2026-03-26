@@ -8,7 +8,7 @@ class CalendarManager: ObservableObject {
     @Published var upcomingEvents: [CalendarEvent] = []
     @Published var accessDenied = false
 
-    private let store = EKEventStore()
+    private nonisolated(unsafe) let store = EKEventStore()
     private var hasAccess = false
 
     struct CalendarEvent: Identifiable {
