@@ -175,8 +175,21 @@ createdb "$DB_NAME" 2>/dev/null && ok "Database '$DB_NAME' created" || ok "Datab
 # Run migrations
 echo "  Running migrations..."
 npx prisma generate 2>&1 | tail -1
-npx prisma migrate deploy 2>&1 | tail -3 || npx prisma migrate dev --name init 2>&1 | tail -3 || warn "Migration may need manual review"
-ok "Database ready"
+
+# Try deploy first (for existing migrations), fall back to dev (creates from scratch)
+if npx prisma migrate deploy 2>&1 | tail -3; then
+    ok "Migrations applied"
+else
+    echo "  Running initial migration..."
+    npx prisma migrate dev --name init --skip-generate 2>&1 | tail -5
+fi
+
+# Verify tables exist
+if npx prisma db execute --stdin <<< "SELECT count(*) FROM \"Meeting\";" &>/dev/null 2>&1; then
+    ok "Database ready (tables verified)"
+else
+    warn "Tables may not exist. Run manually: cd apps/web && npx prisma migrate dev --name init"
+fi
 
 # ── 6. CLI setup ─────────────────────────────────────────
 step 6 "Setting up CLI..."
