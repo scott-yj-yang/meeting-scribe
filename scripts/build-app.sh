@@ -9,7 +9,7 @@
 #   2. Drag it to Login Items (System Settings > General > Login Items) to auto-start
 #   3. Right-click > Show in Finder to find it
 
-set -euo pipefail
+# No set -e — we handle errors manually
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -54,7 +54,7 @@ if [ -f "$ICON_SRC" ]; then
     cp "$SWIFT_DIR/Sources/Resources/AppIcon.appiconset/icon_512x512.png" "$ICONSET_DIR/icon_256x256@2x.png"
     cp "$SWIFT_DIR/Sources/Resources/AppIcon.appiconset/icon_512x512.png" "$ICONSET_DIR/icon_512x512.png"
     cp "$SWIFT_DIR/Sources/Resources/AppIcon.appiconset/icon_1024x1024.png" "$ICONSET_DIR/icon_512x512@2x.png"
-    iconutil -c icns "$ICONSET_DIR" -o "$RESOURCES/AppIcon.icns" 2>/dev/null
+    iconutil -c icns "$ICONSET_DIR" -o "$RESOURCES/AppIcon.icns" 2>/dev/null || echo "  (icon generation skipped)"
     echo -e "${GREEN}Icon added${NC}"
 fi
 

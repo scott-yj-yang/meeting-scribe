@@ -220,8 +220,14 @@ if swift build -c release 2>&1 | tail -3; then
     # Create .app bundle
     cd "$INSTALL_DIR"
     if [[ -f scripts/build-app.sh ]]; then
-        bash scripts/build-app.sh 2>&1 | grep -v "^$" | tail -3
-        ok "MeetingScribe.app installed to ~/Applications/"
+        echo "  Creating app bundle..."
+        bash scripts/build-app.sh 2>&1
+
+        if [[ -d ~/Applications/MeetingScribe.app ]]; then
+            ok "MeetingScribe.app installed to ~/Applications/"
+        else
+            warn "App bundle creation failed. You can run manually: ./scripts/build-app.sh"
+        fi
     fi
 else
     warn "Swift build failed. You may need full Xcode from the App Store."
