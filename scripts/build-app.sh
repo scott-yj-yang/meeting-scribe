@@ -24,13 +24,22 @@ RESOURCES="$CONTENTS/Resources"
 
 echo -e "${BLUE}Building MeetingScribe...${NC}"
 cd "$SWIFT_DIR"
-swift build -c release 2>&1 | tail -3
+swift build -c release 2>&1 | tail -5
 
+# Find the binary — location varies by system
 BINARY="$SWIFT_DIR/.build/release/MeetingScribe"
 if [ ! -f "$BINARY" ]; then
-    echo "Build failed — binary not found"
+    # Try finding it
+    BINARY=$(find "$SWIFT_DIR/.build" -name "MeetingScribe" -type f -perm +111 2>/dev/null | grep -v ".build/artifacts" | head -1)
+fi
+if [ -z "$BINARY" ] || [ ! -f "$BINARY" ]; then
+    echo "Build failed — binary not found in .build/"
+    echo "Contents of .build/:"
+    ls -la "$SWIFT_DIR/.build/" 2>/dev/null || echo "  .build/ does not exist"
+    find "$SWIFT_DIR/.build" -name "MeetingScribe" 2>/dev/null || echo "  No MeetingScribe binary found"
     exit 1
 fi
+echo "  Binary: $BINARY"
 
 echo -e "${BLUE}Creating app bundle...${NC}"
 mkdir -p "$MACOS_DIR" "$RESOURCES"
