@@ -177,34 +177,28 @@ fi
 echo "  Setting up database..."
 createdb "$DB_NAME" 2>/dev/null && ok "Database '$DB_NAME' created" || ok "Database '$DB_NAME' already exists"
 
-# Run migrations
+# Run migrations — pass DATABASE_URL explicitly so Prisma always finds it
+export DATABASE_URL="$DB_URL"
+
 echo "  Running migrations..."
 npx prisma generate 2>&1 | tail -1
 
-# Always run migrate dev to ensure tables are created
-# This is safe to run multiple times — it's a no-op if schema matches
 echo "  Applying database schema..."
-npx prisma migrate dev --name init --skip-generate 2>&1 | tail -5
+# prisma db push is the most reliable for fresh installs
+npx prisma db push --accept-data-loss 2>&1
+PUSH_EXIT=$?
 
-# If migrate dev failed (e.g. migration already exists), try deploy
-npx prisma migrate deploy 2>&1 | tail -3
-
-# Last resort: push schema directly without migrations
-npx prisma db push --skip-generate 2>&1 | tail -3
+if [[ $PUSH_EXIT -ne 0 ]]; then
+    echo "  Retrying with migrate dev..."
+    npx prisma migrate dev --name init --skip-generate 2>&1 | tail -5
+fi
 
 # Verify tables exist
 if psql "$DB_NAME" -c "SELECT count(*) FROM \"Meeting\";" &>/dev/null 2>&1; then
     ok "Database ready (tables verified)"
 else
-    # One more try with force push
-    echo "  Force-pushing schema..."
-    npx prisma db push --force-reset --skip-generate 2>&1 | tail -3
-    if psql "$DB_NAME" -c "SELECT count(*) FROM \"Meeting\";" &>/dev/null 2>&1; then
-        ok "Database ready (tables created)"
-    else
-        warn "Could not create tables automatically."
-        echo "  Run manually: cd $INSTALL_DIR/apps/web && npx prisma db push"
-    fi
+    warn "Tables may not exist."
+    echo "  Try running: cd $INSTALL_DIR/apps/web && DATABASE_URL=\"$DB_URL\" npx prisma db push"
 fi
 
 # ── 6. CLI setup ─────────────────────────────────────────
