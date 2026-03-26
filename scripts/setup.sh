@@ -45,19 +45,40 @@ echo -e "${NC}"
 
 # ── 0. Xcode Command Line Tools ──────────────────────────
 step 0 "Checking Xcode Command Line Tools..."
-if xcode-select -p &>/dev/null; then
-    ok "Command Line Tools installed"
+
+# The real test: can swift actually compile?
+if swift --version &>/dev/null 2>&1; then
+    ok "Command Line Tools installed ($(swift --version 2>&1 | head -1 | sed 's/.*version /Swift /' | cut -d' ' -f1-2))"
 else
     echo "  Installing Xcode Command Line Tools (required for Swift)..."
-    echo "  A system dialog will appear — click 'Install'."
     echo ""
-    xcode-select --install 2>/dev/null
 
-    # Wait for installation to complete
-    echo "  Waiting for installation to finish..."
-    until xcode-select -p &>/dev/null; do
+    # Touch the trigger file that makes softwareupdate install CLT
+    touch /tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress 2>/dev/null || true
+
+    # Try the GUI installer
+    xcode-select --install 2>/dev/null || true
+
+    echo -e "  ${YELLOW}A system dialog should appear — click 'Install'.${NC}"
+    echo "  Waiting for installation to complete..."
+    echo ""
+
+    # Poll until swift actually works (not just xcode-select -p which can lie)
+    TIMEOUT=600  # 10 minutes max
+    ELAPSED=0
+    while ! swift --version &>/dev/null 2>&1; do
         sleep 5
+        ELAPSED=$((ELAPSED + 5))
+        if [[ $ELAPSED -ge $TIMEOUT ]]; then
+            fail "Timed out waiting for Command Line Tools install. Please install manually:\n  xcode-select --install\nThen re-run this script."
+        fi
+        # Show progress every 15 seconds
+        if [[ $((ELAPSED % 15)) -eq 0 ]]; then
+            echo "  Still waiting... (${ELAPSED}s elapsed)"
+        fi
     done
+
+    rm -f /tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress 2>/dev/null
     ok "Command Line Tools installed"
 fi
 
