@@ -237,17 +237,28 @@ step 8 "Creating output directories..."
 mkdir -p ~/MeetingScribe
 ok "~/MeetingScribe/ ready"
 
-# ── 9. Start web server in tmux ──────────────────────────
-step 9 "Starting web server..."
+# ── 9. Start services in tmux ────────────────────────────
+step 9 "Starting services..."
+
+# Install terminal server deps
+echo "  Installing terminal server dependencies..."
+cd "$INSTALL_DIR/scripts"
+npm install 2>&1 | tail -1
+ok "Terminal server dependencies installed"
+
 cd "$INSTALL_DIR/apps/web"
 
 # Kill any existing session
 tmux kill-session -t meetingscribe 2>/dev/null || true
 sleep 1
 
-# Start new tmux session with the web server
+# Start new tmux session with the web server (window 0)
 tmux new-session -d -s meetingscribe -c "$INSTALL_DIR/apps/web" \
     "npm run dev 2>&1 | tee /tmp/meetingscribe-server.log"
+
+# Start terminal WebSocket server (window 1)
+tmux new-window -t meetingscribe -c "$INSTALL_DIR/scripts" \
+    "node terminal-server.js 2>&1 | tee /tmp/meetingscribe-terminal.log"
 
 # Wait for server to be ready
 echo "  Waiting for server on port 3000..."
@@ -279,6 +290,7 @@ else
         warn "Server failed to start. Check: cat /tmp/meetingscribe-server.log"
     fi
 fi
+ok "Terminal WebSocket server on ws://localhost:3001"
 echo "  → View logs: tmux attach -t meetingscribe"
 echo "  → Stop:      tmux kill-session -t meetingscribe"
 
