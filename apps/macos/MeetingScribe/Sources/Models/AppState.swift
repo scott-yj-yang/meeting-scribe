@@ -32,6 +32,7 @@ class AppState: ObservableObject {
     @AppStorage("autoPushToServer") var autoPushToServer = true
 
     @Published var liveTranscriptActive = false
+    @Published var audioLevel: Float = 0  // 0.0 - 1.0, shows mic is receiving audio
     private var liveTranscriptTimer: Timer?
 
     private var timer: Timer?
@@ -93,14 +94,20 @@ class AppState: ObservableObject {
         let startDate = Date()
 
         do {
-            try await transcriptionManager.setup()
-            liveTranscriptActive = true
-            liveTranscriptTimer?.invalidate()
-            liveTranscriptTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: false) { [weak self] _ in
-                Task { @MainActor in
-                    self?.liveTranscriptActive = false
-                    self?.transcriptionManager.reset()
+            // Try live transcript — non-fatal if it fails
+            do {
+                try await transcriptionManager.setup()
+                liveTranscriptActive = true
+                liveTranscriptTimer?.invalidate()
+                liveTranscriptTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: false) { [weak self] _ in
+                    Task { @MainActor in
+                        self?.liveTranscriptActive = false
+                        self?.transcriptionManager.reset()
+                    }
                 }
+            } catch {
+                print("[Recording] Live transcript unavailable: \(error.localizedDescription)")
+                liveTranscriptActive = true  // Still show the audio check panel (with level meter)
             }
 
             let transcriber = transcriptionManager
@@ -114,7 +121,21 @@ class AppState: ObservableObject {
             audioCaptureManager.onMicAudio = { [weak self] buffer, time in
                 nonisolated(unsafe) let buffer = buffer
                 writer.write(buffer: buffer)
+
+                // Compute audio level for the visual meter
+                var level: Float = 0
+                if let channelData = buffer.floatChannelData?[0] {
+                    let frameCount = Int(buffer.frameLength)
+                    var sum: Float = 0
+                    for i in 0..<min(frameCount, 1024) {
+                        sum += abs(channelData[i])
+                    }
+                    level = min(1.0, (sum / Float(min(frameCount, 1024))) * 10)
+                }
+
+                nonisolated(unsafe) let capturedLevel = level
                 Task { @MainActor in
+                    self?.audioLevel = capturedLevel
                     if self?.liveTranscriptActive == true {
                         transcriber.processAudioBuffer(buffer, speaker: "Local")
                     }

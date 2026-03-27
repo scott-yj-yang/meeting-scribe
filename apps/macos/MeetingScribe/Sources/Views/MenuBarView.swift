@@ -385,10 +385,21 @@ struct MenuBarView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .lineLimit(4)
                     } else {
-                        Text("Listening...")
-                            .font(.system(.caption, design: .rounded))
-                            .foregroundStyle(.tertiary)
-                            .italic()
+                        // Audio level meter — shows mic is working even without speech-to-text
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 3) {
+                                ForEach(0..<12, id: \.self) { i in
+                                    RoundedRectangle(cornerRadius: 1)
+                                        .fill(Float(i) / 12.0 < appState.audioLevel ? Color.green : Color.gray.opacity(0.15))
+                                        .frame(width: 4, height: 10)
+                                }
+                                Spacer()
+                                Text(appState.audioLevel > 0.01 ? "Receiving audio" : "Waiting for audio...")
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .animation(.easeOut(duration: 0.1), value: appState.audioLevel)
+                        }
                     }
                 }
                 .padding(8)
