@@ -118,46 +118,36 @@ class AppState: ObservableObject {
             let writer = AudioFileWriter(directory: outputDirectory, title: title, date: startDate)
             self.audioFileWriter = writer
 
-            nonisolated(unsafe) var levelUpdateCounter = 0
             audioCaptureManager.onMicAudio = { [weak self] buffer, time in
                 nonisolated(unsafe) let buffer = buffer
                 writer.write(buffer: buffer)
 
-                // Compute audio level every 5th buffer (~10 updates/sec instead of 47)
-                levelUpdateCounter += 1
-                if levelUpdateCounter % 5 == 0 {
-                    var rms: Float = 0
-                    let frameCount = Int(buffer.frameLength)
-                    if frameCount > 0 {
-                        // Use RMS calculation that works regardless of audio format
-                        if let channelData = buffer.floatChannelData?[0] {
-                            var sum: Float = 0
-                            for i in 0..<frameCount {
-                                sum += channelData[i] * channelData[i]
-                            }
-                            rms = sqrtf(sum / Float(frameCount))
-                        } else if let int16Data = buffer.int16ChannelData?[0] {
-                            var sum: Float = 0
-                            for i in 0..<frameCount {
-                                let sample = Float(int16Data[i]) / Float(Int16.max)
-                                sum += sample * sample
-                            }
-                            rms = sqrtf(sum / Float(frameCount))
+                // Compute audio level from every buffer for responsive meter
+                var rms: Float = 0
+                let frameCount = Int(buffer.frameLength)
+                if frameCount > 0 {
+                    if let channelData = buffer.floatChannelData?[0] {
+                        var sum: Float = 0
+                        for i in stride(from: 0, to: frameCount, by: 4) {
+                            sum += channelData[i] * channelData[i]
                         }
+                        rms = sqrtf(sum / Float(frameCount / 4))
+                    } else if let int16Data = buffer.int16ChannelData?[0] {
+                        var sum: Float = 0
+                        for i in stride(from: 0, to: frameCount, by: 4) {
+                            let s = Float(int16Data[i]) / Float(Int16.max)
+                            sum += s * s
+                        }
+                        rms = sqrtf(sum / Float(frameCount / 4))
                     }
-                    let level = min(1.0, rms * 15)
-                    nonisolated(unsafe) let capturedLevel = level
-                    Task { @MainActor in
-                        self?.audioLevel = capturedLevel
-                        if self?.liveTranscriptActive == true {
-                            transcriber.processAudioBuffer(buffer, speaker: "Local")
-                        }
-                    }
-                } else {
-                    Task { @MainActor in
-                        if self?.liveTranscriptActive == true {
-                            transcriber.processAudioBuffer(buffer, speaker: "Local")
-                        }
+                }
+                let level = min(1.0, rms * 15)
+                nonisolated(unsafe) let capturedLevel = level
+
+                Task { @MainActor in
+                    self?.audioLevel = capturedLevel
+                    if self?.liveTranscriptActive == true {
+                        transcriber.processAudioBuffer(buffer, speaker: "Local")
                     }
                 }
             }

@@ -398,7 +398,7 @@ struct MenuBarView: View {
                                     .font(.system(size: 9))
                                     .foregroundStyle(.tertiary)
                             }
-                            .animation(.easeOut(duration: 0.1), value: appState.audioLevel)
+                            .animation(.linear(duration: 0.03), value: appState.audioLevel)
                         }
                     }
                 }
