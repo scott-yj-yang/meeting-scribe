@@ -12,9 +12,11 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const { id } = await params;
   const body = await request.json();
-  const { message, history } = body as {
+  const { message, history, model, thinkingEffort } = body as {
     message: string;
     history: { role: string; content: string }[];
+    model?: string;       // "sonnet" | "opus" | "haiku"
+    thinkingEffort?: string; // "low" | "medium" | "high"
   };
 
   if (!message) {
@@ -88,7 +90,11 @@ Answer the user's questions about this meeting. Be concise, reference specific p
     start(controller) {
       console.log("[Chat] Spawning claude for meeting", id);
 
-      const claude = spawn("claude", ["-p", fullPrompt, "--print"], {
+      const claudeArgs = ["-p", fullPrompt, "--print"];
+      if (model) claudeArgs.push("--model", model);
+      if (thinkingEffort) claudeArgs.push("--thinking-effort", thinkingEffort);
+
+      const claude = spawn("claude", claudeArgs, {
         env: {
           ...process.env,
           PATH: fullPath,

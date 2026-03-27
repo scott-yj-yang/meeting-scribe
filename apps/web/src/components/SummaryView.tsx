@@ -66,7 +66,38 @@ export default function SummaryView({ content, meetingId }: SummaryViewProps) {
       .then((res) => res.json())
       .then((data) => setClaudeReady(data.status === "ready"))
       .catch(() => setClaudeReady(false));
-  }, []);
+
+    // Check if a summarization job is already running (e.g. user navigated away and back)
+    fetch(`/api/meetings/${meetingId}/summarize/status`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.status === "running") {
+          setLoading(true);
+          if (data.elapsedSeconds) {
+            startTimeRef.current = Date.now() - data.elapsedSeconds * 1000;
+            setElapsed(data.elapsedSeconds);
+          }
+          // Resume polling
+          const poll = async () => {
+            if (cancelledRef.current) return;
+            const statusRes = await fetch(`/api/meetings/${meetingId}/summarize/status`);
+            const statusData = await statusRes.json();
+            if (statusData.status === "completed") {
+              window.location.reload();
+              return;
+            }
+            if (statusData.status === "failed") {
+              setError(statusData.error || "Summarization failed");
+              setLoading(false);
+              return;
+            }
+            setTimeout(poll, 3000);
+          };
+          poll();
+        }
+      })
+      .catch(() => {});
+  }, [meetingId]);
 
   // Start/stop the live timer whenever loading changes
   useEffect(() => {

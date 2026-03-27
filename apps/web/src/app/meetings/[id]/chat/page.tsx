@@ -13,6 +13,9 @@ interface Message {
 export default function ChatPage() {
   const { id } = useParams<{ id: string }>();
   const [messages, setMessages] = useState<Message[]>([]);
+  const [model, setModel] = useState("sonnet");
+  const [thinkingEffort, setThinkingEffort] = useState("medium");
+  const [showSettings, setShowSettings] = useState(false);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [meetingTitle, setMeetingTitle] = useState("");
@@ -47,7 +50,7 @@ export default function ChatPage() {
       const res = await fetch(`/api/meetings/${id}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, history: messages }),
+        body: JSON.stringify({ message: text, history: messages, model, thinkingEffort }),
       });
 
       if (!res.ok) {
@@ -120,10 +123,56 @@ export default function ChatPage() {
           </svg>
           Back to meeting
         </Link>
-        {meetingTitle && (
-          <span className="text-xs text-zinc-400 dark:text-zinc-500 truncate max-w-xs">{meetingTitle}</span>
-        )}
+        <div className="flex items-center gap-2">
+          {meetingTitle && (
+            <span className="text-xs text-zinc-400 dark:text-zinc-500 truncate max-w-32">{meetingTitle}</span>
+          )}
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors ${
+              showSettings
+                ? "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                : "text-zinc-400 hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300"
+            }`}
+          >
+            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738c.32.447.269 1.06-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.397.165-.71.505-.781.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.447.32-1.06.269-1.45-.12l-.773-.774a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.273-.806.108-1.204-.165-.397-.506-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.108-1.204l-.526-.738a1.125 1.125 0 01.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            {model}
+          </button>
+        </div>
       </div>
+
+      {/* Settings bar */}
+      {showSettings && (
+        <div className="flex items-center gap-4 border-b border-zinc-100 px-5 py-2 dark:border-zinc-800/50">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-zinc-400 dark:text-zinc-500">Model</span>
+            <select
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+            >
+              <option value="sonnet">Sonnet (fast)</option>
+              <option value="opus">Opus (smartest)</option>
+              <option value="haiku">Haiku (fastest)</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-zinc-400 dark:text-zinc-500">Thinking</span>
+            <select
+              value={thinkingEffort}
+              onChange={(e) => setThinkingEffort(e.target.value)}
+              className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+            >
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+        </div>
+      )}
 
       {/* Chat area */}
       <div className="flex-1 overflow-y-auto">
