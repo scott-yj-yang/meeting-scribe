@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 
 interface SummaryViewProps {
@@ -8,16 +8,27 @@ interface SummaryViewProps {
   meetingId: string;
 }
 
-function SummarizingSkeleton() {
+function formatElapsed(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function SummarizingSkeleton({ elapsed, onCancel }: { elapsed: number; onCancel: () => void }) {
   return (
     <div className="py-8">
       <div className="mb-6 text-center">
-        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          Claude is analyzing your meeting transcript...
-        </p>
-        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-          This usually takes 30-60 seconds depending on transcript length.
-        </p>
+        <div className="flex items-center justify-center gap-3">
+          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            Summarizing... {formatElapsed(elapsed)}
+          </p>
+          <button
+            onClick={onCancel}
+            className="inline-flex items-center rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-1"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
       <div className="space-y-4">
         {/* Skeleton bars */}
@@ -45,12 +56,45 @@ export default function SummaryView({ content, meetingId }: SummaryViewProps) {
   const [showResummarize, setShowResummarize] = useState(false);
   const [customInstruction, setCustomInstruction] = useState("");
   const [claudeReady, setClaudeReady] = useState<boolean | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const startTimeRef = useRef<number | null>(null);
+  const cancelledRef = useRef(false);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     fetch("/api/health/claude")
       .then((res) => res.json())
       .then((data) => setClaudeReady(data.status === "ready"))
       .catch(() => setClaudeReady(false));
+  }, []);
+
+  // Start/stop the live timer whenever loading changes
+  useEffect(() => {
+    if (loading) {
+      startTimeRef.current = Date.now();
+      setElapsed(0);
+      cancelledRef.current = false;
+      timerRef.current = setInterval(() => {
+        setElapsed(Math.floor((Date.now() - (startTimeRef.current ?? Date.now())) / 1000));
+      }, 1000);
+    } else {
+      if (timerRef.current !== null) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    }
+    return () => {
+      if (timerRef.current !== null) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [loading]);
+
+  const handleCancel = useCallback(() => {
+    cancelledRef.current = true;
+    setLoading(false);
+    setElapsed(0);
   }, []);
 
   const handleSummarize = useCallback(async (instruction?: string) => {
@@ -69,6 +113,9 @@ export default function SummaryView({ content, meetingId }: SummaryViewProps) {
 
       // Poll for completion
       const poll = async () => {
+        // Stop polling if user cancelled
+        if (cancelledRef.current) return;
+
         const statusRes = await fetch(
           `/api/meetings/${meetingId}/summarize/status`,
         );
@@ -76,6 +123,9 @@ export default function SummaryView({ content, meetingId }: SummaryViewProps) {
           throw new Error("Failed to check summarization status");
         }
         const statusData = await statusRes.json();
+
+        if (cancelledRef.current) return;
+
         if (statusData.status === "completed") {
           window.location.reload();
           return;
@@ -87,8 +137,10 @@ export default function SummaryView({ content, meetingId }: SummaryViewProps) {
       };
       await poll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
-      setLoading(false);
+      if (!cancelledRef.current) {
+        setError(err instanceof Error ? err.message : "An error occurred");
+        setLoading(false);
+      }
     }
   }, [meetingId]);
 
@@ -122,7 +174,7 @@ export default function SummaryView({ content, meetingId }: SummaryViewProps) {
   }, [meetingId]);
 
   if (loading) {
-    return <SummarizingSkeleton />;
+    return <SummarizingSkeleton elapsed={elapsed} onCancel={handleCancel} />;
   }
 
   if (content) {
@@ -186,7 +238,17 @@ export default function SummaryView({ content, meetingId }: SummaryViewProps) {
           </div>
         )}
 
-        {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+        {error && (
+          <div className="mb-4 flex items-center gap-3 rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-3 py-2">
+            <p className="flex-1 text-sm text-red-700 dark:text-red-400">{error}</p>
+            <button
+              onClick={() => handleSummarize(customInstruction || undefined)}
+              className="shrink-0 inline-flex items-center rounded-md bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1"
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
         <div className="prose prose-sm dark:prose-invert max-w-none">
           <ReactMarkdown>{content}</ReactMarkdown>
@@ -198,7 +260,17 @@ export default function SummaryView({ content, meetingId }: SummaryViewProps) {
   return (
     <div className="py-12 text-center">
       <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">No summary yet.</p>
-      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      {error && (
+        <div className="mb-4 flex items-center justify-center gap-3 rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-3 py-2 mx-auto max-w-md">
+          <p className="flex-1 text-sm text-red-700 dark:text-red-400 text-left">{error}</p>
+          <button
+            onClick={() => handleSummarize()}
+            className="shrink-0 inline-flex items-center rounded-md bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1"
+          >
+            Retry
+          </button>
+        </div>
+      )}
       {claudeReady === false && (
         <p className="mb-3 text-xs text-amber-600 dark:text-amber-400">
           Claude Code not installed —{" "}
@@ -219,7 +291,7 @@ export default function SummaryView({ content, meetingId }: SummaryViewProps) {
         title={claudeReady === false ? "Claude Code not installed" : undefined}
         className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {loading ? "Summarizing..." : "Summarize with Claude"}
+        Summarize with Claude
       </button>
     </div>
   );
