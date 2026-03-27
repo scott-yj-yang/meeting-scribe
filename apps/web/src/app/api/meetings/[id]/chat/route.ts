@@ -92,7 +92,7 @@ Answer the user's questions about this meeting. Be concise, reference specific p
 
       const claudeArgs = ["-p", fullPrompt, "--print"];
       if (model) claudeArgs.push("--model", model);
-      if (thinkingEffort) claudeArgs.push("--thinking-effort", thinkingEffort);
+      if (thinkingEffort) claudeArgs.push("--reasoning-effort", thinkingEffort);
 
       const claude = spawn("claude", claudeArgs, {
         env: {
