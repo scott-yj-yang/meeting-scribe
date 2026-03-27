@@ -1,9 +1,27 @@
-const NOTION_API_KEY = process.env.NOTION_API_KEY || "";
-const NOTION_DATABASE_ID = process.env.NOTION_DATABASE_ID || "";
+import { readFileSync, existsSync } from "fs";
+import { join } from "path";
+import { homedir } from "os";
+
 const NOTION_VERSION = "2022-06-28";
 
+function getNotionConfig() {
+  // Check config file first (set via web UI), then env vars
+  const configFile = join(homedir(), ".meetingscribe", "notion.json");
+  if (existsSync(configFile)) {
+    try {
+      const config = JSON.parse(readFileSync(configFile, "utf-8"));
+      if (config.apiKey && config.databaseId) return config;
+    } catch {}
+  }
+  return {
+    apiKey: process.env.NOTION_API_KEY || "",
+    databaseId: process.env.NOTION_DATABASE_ID || "",
+  };
+}
+
 export function isNotionConfigured(): boolean {
-  return !!NOTION_API_KEY && !!NOTION_DATABASE_ID;
+  const { apiKey, databaseId } = getNotionConfig();
+  return !!apiKey && !!databaseId;
 }
 
 interface NotionMeetingInput {
@@ -19,8 +37,9 @@ interface NotionMeetingInput {
  * The summary is converted from markdown to Notion blocks.
  */
 export async function syncToNotion(input: NotionMeetingInput): Promise<string> {
-  if (!isNotionConfigured()) {
-    throw new Error("Notion is not configured. Set NOTION_API_KEY and NOTION_DATABASE_ID.");
+  const { apiKey: NOTION_API_KEY, databaseId: NOTION_DATABASE_ID } = getNotionConfig();
+  if (!NOTION_API_KEY || !NOTION_DATABASE_ID) {
+    throw new Error("Notion is not configured. Go to Settings to set up Notion integration.");
   }
 
   // Convert markdown summary to Notion blocks
