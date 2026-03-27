@@ -91,21 +91,37 @@ export default function SummaryView({ content, meetingId }: SummaryViewProps) {
     };
   }, [loading]);
 
-  const handleCancel = useCallback(() => {
+  const handleCancel = useCallback(async () => {
+    // Cancel on server too
+    await fetch(`/api/meetings/${meetingId}/summarize`, { method: "DELETE" }).catch(() => {});
     cancelledRef.current = true;
     setLoading(false);
     setElapsed(0);
-  }, []);
+  }, [meetingId]);
 
-  const handleSummarize = useCallback(async (instruction?: string) => {
+  const handleSummarize = useCallback(async (instruction?: string, force?: boolean) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/meetings/${meetingId}/summarize`, {
+      const body: Record<string, unknown> = {};
+      if (instruction) body.customInstruction = instruction;
+      if (force) body.force = true;
+
+      let res = await fetch(`/api/meetings/${meetingId}/summarize`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(instruction ? { customInstruction: instruction } : {}),
+        body: JSON.stringify(body),
       });
+
+      // If 409 (already running), auto-force retry
+      if (res.status === 409) {
+        res = await fetch(`/api/meetings/${meetingId}/summarize`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...body, force: true }),
+        });
+      }
+
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || "Failed to start summarization");
