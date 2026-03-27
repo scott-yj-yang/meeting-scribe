@@ -84,7 +84,7 @@ if command -v brew &>/dev/null; then
     ok "Homebrew installed"
 else
     echo "  Installing Homebrew (may ask for your password)..."
-    NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || fail "Homebrew installation failed"
+    NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" </dev/null || fail "Homebrew installation failed"
     ok "Homebrew installed"
 fi
 
@@ -109,10 +109,12 @@ for dep in "${DEPS[@]}"; do
         ok "$dep already installed"
     else
         echo "  Installing $dep..."
-        if brew install "$dep" 2>&1 | tail -5; then
+        brew install "$dep" </dev/null || true
+        # Verify it actually installed
+        if brew list "$dep" &>/dev/null 2>&1; then
             ok "$dep installed"
         else
-            warn "$dep installation had issues (continuing)"
+            warn "$dep may not have installed correctly (continuing)"
         fi
     fi
 done
@@ -208,7 +210,7 @@ elif [[ -d "$INSTALL_DIR/.git" ]]; then
     ok "Repository updated"
 else
     mkdir -p "$(dirname "$INSTALL_DIR")"
-    if git clone "$REPO_URL" "$INSTALL_DIR"; then
+    if git clone "$REPO_URL" "$INSTALL_DIR" </dev/null; then
         ok "Cloned to $INSTALL_DIR"
     else
         fail "Failed to clone repository. Check your internet connection."
@@ -221,11 +223,8 @@ step 5 "Setting up web app..."
 cd "$INSTALL_DIR/apps/web"
 
 echo "  Installing npm packages..."
-if npm install 2>&1 | tail -3; then
-    ok "npm packages installed"
-else
-    warn "npm install had warnings (continuing)"
-fi
+npm install </dev/null 2>&1 | tail -3
+ok "npm packages installed"
 
 # Create env files — detect database connection
 DB_CONN_USER=$(whoami)
@@ -263,14 +262,15 @@ createdb "$DB_NAME" 2>/dev/null && ok "Database created" || ok "Database already
 export DATABASE_URL="$DB_URL"
 
 echo "  Running Prisma generate..."
-npx prisma generate 2>&1 | tail -1
+npx prisma generate </dev/null 2>&1 | tail -1
 
 echo "  Applying database schema..."
-if DATABASE_URL="$DB_URL" npx prisma db push --accept-data-loss 2>&1 | tail -3; then
-    ok "Schema applied"
-else
+DATABASE_URL="$DB_URL" npx prisma db push --accept-data-loss </dev/null 2>&1 | tail -3
+PUSH_EXIT=${PIPESTATUS[0]}
+
+if [[ "$PUSH_EXIT" -ne 0 ]]; then
     echo "  Trying migrate dev..."
-    DATABASE_URL="$DB_URL" npx prisma migrate dev --name init --skip-generate 2>&1 | tail -5
+    DATABASE_URL="$DB_URL" npx prisma migrate dev --name init --skip-generate </dev/null 2>&1 | tail -5
 fi
 
 # Verify — try querying the table
@@ -288,7 +288,7 @@ step 6 "Setting up CLI..."
 cd "$INSTALL_DIR/cli"
 
 echo "  Installing CLI packages..."
-npm install 2>&1 | tail -1
+npm install </dev/null 2>&1 | tail -1
 
 # npm link can fail in various ways
 if npm link 2>/dev/null; then
@@ -307,7 +307,7 @@ cd "$INSTALL_DIR/apps/macos/MeetingScribe"
 echo "  Compiling Swift (first build takes 1-2 minutes)..."
 
 # Capture both stdout and exit code
-BUILD_OUTPUT=$(swift build -c release 2>&1)
+BUILD_OUTPUT=$(swift build -c release </dev/null 2>&1)
 BUILD_EXIT=$?
 
 if [[ $BUILD_EXIT -eq 0 ]]; then
@@ -346,7 +346,7 @@ step 9 "Starting services..."
 echo "  Installing terminal server dependencies..."
 cd "$INSTALL_DIR/scripts"
 if [[ -f package.json ]]; then
-    npm install 2>&1 | tail -1
+    npm install </dev/null 2>&1 | tail -1
     if [[ -d node_modules/node-pty ]]; then
         ok "Terminal server dependencies ready"
     else
