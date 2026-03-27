@@ -427,6 +427,14 @@ echo "    App:         ~/Applications/MeetingScribe.app"
 fi
 echo ""
 
+# Install update command globally
+if [[ -f "$INSTALL_DIR/scripts/update.sh" ]]; then
+    ln -sf "$INSTALL_DIR/scripts/update.sh" "$BREW_PREFIX/bin/meetingscribe-update" 2>/dev/null || true
+    if command -v meetingscribe-update &>/dev/null; then
+        ok "Update command installed: meetingscribe-update"
+    fi
+fi
+
 # Add brew to shell profile if not already there (for future terminals)
 SHELL_RC="$HOME/.zshrc"
 if [[ -f "$HOME/.bashrc" ]] && [[ ! -f "$HOME/.zshrc" ]]; then
