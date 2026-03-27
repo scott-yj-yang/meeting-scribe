@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 
 interface SummaryViewProps {
@@ -44,6 +44,14 @@ export default function SummaryView({ content, meetingId }: SummaryViewProps) {
   const [error, setError] = useState<string | null>(null);
   const [showResummarize, setShowResummarize] = useState(false);
   const [customInstruction, setCustomInstruction] = useState("");
+  const [claudeReady, setClaudeReady] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch("/api/health/claude")
+      .then((res) => res.json())
+      .then((data) => setClaudeReady(data.status === "ready"))
+      .catch(() => setClaudeReady(false));
+  }, []);
 
   const handleSummarize = useCallback(async (instruction?: string) => {
     setLoading(true);
@@ -191,9 +199,24 @@ export default function SummaryView({ content, meetingId }: SummaryViewProps) {
     <div className="py-12 text-center">
       <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">No summary yet.</p>
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      {claudeReady === false && (
+        <p className="mb-3 text-xs text-amber-600 dark:text-amber-400">
+          Claude Code not installed —{" "}
+          <a
+            href="https://docs.anthropic.com/en/docs/claude-code"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:no-underline"
+          >
+            install it
+          </a>{" "}
+          to enable summarization.
+        </p>
+      )}
       <button
         onClick={() => handleSummarize()}
-        disabled={loading}
+        disabled={loading || claudeReady === false}
+        title={claudeReady === false ? "Claude Code not installed" : undefined}
         className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {loading ? "Summarizing..." : "Summarize with Claude"}

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import ThemeToggle from "@/components/ThemeToggle";
+import ClaudeStatus from "@/components/ClaudeStatus";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -52,6 +53,7 @@ export default function RootLayout({
               MeetingScribe
             </Link>
             <div className="flex items-center gap-1">
+              <ClaudeStatus />
               <Link
                 href="/settings"
                 className="rounded-md px-2.5 py-1.5 text-sm text-gray-500 dark:text-gray-400 transition-colors hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
