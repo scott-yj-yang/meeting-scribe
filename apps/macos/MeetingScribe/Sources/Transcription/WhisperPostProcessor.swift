@@ -26,27 +26,41 @@ final class WhisperPostProcessor: @unchecked Sendable {
         FileManager.default.fileExists(atPath: modelPath)
     }
 
-    /// A single segment from whisper.cpp JSON output, including confidence metrics.
+    /// whisper.cpp -ojf JSON format: segments live under "transcription",
+    /// timestamps are in "offsets" (milliseconds), and confidence is per-token "p".
+    struct WhisperToken: Decodable {
+        let text: String
+        let p: Double  // token probability (0.0-1.0)
+    }
+
+    struct WhisperOffsets: Decodable {
+        let from: Int  // milliseconds
+        let to: Int    // milliseconds
+    }
+
     struct WhisperSegment: Decodable {
         let text: String
-        let start: Double
-        let end: Double
-        // swiftlint:disable identifier_name
-        let avg_logprob: Double?
-        let compression_ratio: Double?
-        let no_speech_prob: Double?
-        // swiftlint:enable identifier_name
+        let offsets: WhisperOffsets
+        let tokens: [WhisperToken]?
+
+        /// Average token probability (excluding special tokens).
+        var avgTokenProb: Double {
+            guard let tokens = tokens else { return 1.0 }
+            let real = tokens.filter { !$0.text.hasPrefix("[") && !$0.text.hasPrefix("<") }
+            guard !real.isEmpty else { return 1.0 }
+            return real.map(\.p).reduce(0, +) / Double(real.count)
+        }
+
+        var startSeconds: Double { Double(offsets.from) / 1000.0 }
+        var endSeconds: Double { Double(offsets.to) / 1000.0 }
     }
 
     struct WhisperJSON: Decodable {
-        let segments: [WhisperSegment]
+        let transcription: [WhisperSegment]
     }
 
-    /// Thresholds for filtering low-confidence segments.
-    /// Segments exceeding these are likely hallucinations.
-    static let maxCompressionRatio = 2.4
-    static let maxNoSpeechProb = 0.6
-    static let minAvgLogprob = -1.0
+    /// Minimum average token probability — segments below this are likely hallucinated.
+    static let minAvgTokenProb = 0.4
 
     /// Known whisper hallucination phrases from YouTube training data.
     /// Matched case-insensitively after stripping punctuation.
@@ -100,7 +114,7 @@ final class WhisperPostProcessor: @unchecked Sendable {
             "-et", "2.4",         // entropy threshold
             "-lpt", "-0.5",       // log probability threshold
             "-sns",               // suppress non-speech tokens
-            "-noc",               // NEW: no context carry-over — prevents cascading hallucinations
+            "-mc", "0",           // max-context 0 — prevents cascading hallucinations
         ]
 
         let stderrPipe = Pipe()
@@ -169,22 +183,14 @@ final class WhisperPostProcessor: @unchecked Sendable {
         let decoder = JSONDecoder()
         let whisperOutput = try decoder.decode(WhisperJSON.self, from: jsonData)
 
-        // Filter out low-confidence segments (likely hallucinations)
-        let confident = whisperOutput.segments.filter { seg in
-            let comp = seg.compression_ratio ?? 0
-            let noSpeech = seg.no_speech_prob ?? 0
-            let logprob = seg.avg_logprob ?? 0
-
-            let passesCompression = comp <= WhisperPostProcessor.maxCompressionRatio
-            let passesSpeech = noSpeech <= WhisperPostProcessor.maxNoSpeechProb
-            let passesLogprob = logprob >= WhisperPostProcessor.minAvgLogprob
-
-            return passesCompression && passesSpeech && passesLogprob
+        // Filter out low-confidence segments using average token probability
+        let confident = whisperOutput.transcription.filter { seg in
+            seg.avgTokenProb >= WhisperPostProcessor.minAvgTokenProb
         }
 
-        let filteredCount = whisperOutput.segments.count - confident.count
+        let filteredCount = whisperOutput.transcription.count - confident.count
         if filteredCount > 0 {
-            print("[WhisperPostProcessor] Filtered \(filteredCount)/\(whisperOutput.segments.count) low-confidence segments")
+            print("[WhisperPostProcessor] Filtered \(filteredCount)/\(whisperOutput.transcription.count) low-confidence segments")
         }
 
         let rawText = confident.map { $0.text.trimmingCharacters(in: .whitespaces) }.joined(separator: " ")
@@ -198,8 +204,8 @@ final class WhisperPostProcessor: @unchecked Sendable {
             TranscriptSegment(
                 speaker: "Speaker",
                 text: WhisperPostProcessor.collapseRepetitions(seg.text.trimmingCharacters(in: .whitespaces)),
-                startTime: seg.start,
-                endTime: seg.end
+                startTime: seg.startSeconds,
+                endTime: seg.endSeconds
             )
         }.filter { !$0.text.isEmpty }
 

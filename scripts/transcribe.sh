@@ -20,7 +20,12 @@ set -euo pipefail
 # --- Configuration ---
 API_URL="${MEETINGSCRIBE_API_URL:-http://localhost:3000}"
 API_KEY="${MEETINGSCRIBE_API_KEY:-}"
-MODEL_PATH="${WHISPER_MODEL:-$(find ~/.local/share/whisper-cli /opt/homebrew/share/whisper-cli 2>/dev/null -name "ggml-large-v3-turbo.bin" -print -quit 2>/dev/null || echo "")}"
+MODEL_PATH="${WHISPER_MODEL:-}"
+if [[ -z "$MODEL_PATH" ]]; then
+    for dir in ~/.local/share/whisper-cli ~/.local/share/whisper-cpp /opt/homebrew/share/whisper-cli /opt/homebrew/share/whisper-cpp /usr/local/share/whisper-cpp; do
+        [[ -f "$dir/ggml-large-v3-turbo.bin" ]] && MODEL_PATH="$dir/ggml-large-v3-turbo.bin" && break
+    done
+fi
 OUTPUT_DIR="${MEETINGSCRIBE_OUTPUT_DIR:-$HOME/MeetingScribe}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
@@ -120,7 +125,7 @@ whisper-cli \
     -et 2.4 \
     -lpt -0.5 \
     -sns \
-    -noc \
+    -mc 0 \
     2>/dev/null
 
 if [[ ! -f "$TRANSCRIPT_FILE.json" ]]; then
@@ -136,24 +141,24 @@ RAW_WORD_COUNT=$(python3 -c "
 import json
 with open('$TRANSCRIPT_FILE.json') as f:
     data = json.load(f)
-print(sum(len(s['text'].split()) for s in data.get('segments',[])))
+print(sum(len(s['text'].split()) for s in data.get('transcription',[])))
 ")
 
 TRANSCRIPT_TEXT=$(python3 -c "
 import json, sys, re
 
-# --- Confidence-based segment filtering ---
+# --- Confidence-based segment filtering (token probability) ---
 with open('$TRANSCRIPT_FILE.json') as f:
     data = json.load(f)
 
-segments = data.get('segments', [])
+segments = data.get('transcription', [])
 total = len(segments)
 confident = []
 for seg in segments:
-    comp = seg.get('compression_ratio', 0)
-    no_speech = seg.get('no_speech_prob', 0)
-    logprob = seg.get('avg_logprob', 0)
-    if comp <= 2.4 and no_speech <= 0.6 and logprob >= -1.0:
+    tokens = seg.get('tokens', [])
+    real_tokens = [t for t in tokens if not t['text'].startswith('[') and not t['text'].startswith('<')]
+    avg_p = sum(t['p'] for t in real_tokens) / len(real_tokens) if real_tokens else 1.0
+    if avg_p >= 0.4:
         confident.append(seg)
 
 filtered = total - len(confident)
@@ -257,12 +262,17 @@ import json, re
 with open('$TRANSCRIPT_FILE.json') as f:
     data = json.load(f)
 
-segments = [s for s in data.get('segments',[]) if s.get('compression_ratio',0)<=2.4 and s.get('no_speech_prob',0)<=0.6 and s.get('avg_logprob',0)>=-1.0]
+def avg_prob(seg):
+    tokens = seg.get('tokens', [])
+    real = [t for t in tokens if not t['text'].startswith('[') and not t['text'].startswith('<')]
+    return sum(t['p'] for t in real) / len(real) if real else 1.0
+
+segments = [s for s in data.get('transcription',[]) if avg_prob(s) >= 0.4]
 
 for s in segments:
     text = s['text'].strip()
     if not text: continue
-    secs = int(s.get('start', 0))
+    secs = int(s.get('offsets', {}).get('from', 0)) // 1000
     h, rem = divmod(secs, 3600)
     m, sec = divmod(rem, 60)
     ts = f'[{h:02d}:{m:02d}:{sec:02d}]'
@@ -305,8 +315,12 @@ SEGMENTS_JSON=$(python3 -c "
 import json
 with open('$TRANSCRIPT_FILE.json') as f:
     data = json.load(f)
-segments = [s for s in data.get('segments',[]) if s.get('compression_ratio',0)<=2.4 and s.get('no_speech_prob',0)<=0.6 and s.get('avg_logprob',0)>=-1.0]
-out = [{'speaker':'Speaker','text':s['text'].strip(),'startTime':s.get('start',0),'endTime':s.get('end',0)} for s in segments if s['text'].strip()]
+def avg_prob(seg):
+    tokens = seg.get('tokens', [])
+    real = [t for t in tokens if not t['text'].startswith('[') and not t['text'].startswith('<')]
+    return sum(t['p'] for t in real) / len(real) if real else 1.0
+segments = [s for s in data.get('transcription',[]) if avg_prob(s) >= 0.4]
+out = [{'speaker':'Speaker','text':s['text'].strip(),'startTime':s['offsets']['from']/1000.0,'endTime':s['offsets']['to']/1000.0} for s in segments if s['text'].strip()]
 print(json.dumps(out))
 ")
 
