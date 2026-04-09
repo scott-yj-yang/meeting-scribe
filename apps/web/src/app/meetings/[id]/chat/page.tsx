@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
+import { showNotification } from "@/lib/tauri";
 
 interface Message {
   role: "user" | "assistant";
@@ -21,6 +22,8 @@ export default function ChatPage() {
   const [meetingTitle, setMeetingTitle] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // AbortController ref — one per in-flight request, cleaned up on unmount
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     fetch(`/api/meetings/${id}`)
@@ -29,28 +32,50 @@ export default function ChatPage() {
       .catch(() => {});
   }, [id]);
 
+  // Auto-scroll to the latest message whenever messages update
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
+  // Cancel any in-flight request when the component unmounts
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
+
   const sendMessage = useCallback(async (overrideText?: string) => {
     const text = (overrideText || input).trim();
     if (!text || streaming) return;
     if (!overrideText) setInput("");
 
+    // Abort any previous in-flight request and create a fresh controller
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     const userMessage: Message = { role: "user", content: text };
-    const newMessages = [...messages, userMessage];
-    setMessages(newMessages);
+    // Build a snapshot that includes the user message so the server receives
+    // the full up-to-date conversation. Using `messages` directly would send
+    // the stale pre-render value and omit this turn (stale-closure bug).
+    const historySnapshot: Message[] = [...messages, userMessage];
+
+    setMessages([...historySnapshot, { role: "assistant", content: "" }]);
     setStreaming(true);
-    setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
 
     try {
       const res = await fetch(`/api/meetings/${id}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, history: messages, model, thinkingEffort }),
+        body: JSON.stringify({
+          message: text,
+          history: historySnapshot,
+          model,
+          thinkingEffort,
+        }),
+        signal: controller.signal,
       });
 
       if (!res.ok) {
@@ -69,35 +94,74 @@ export default function ChatPage() {
       if (!reader) { setStreaming(false); return; }
 
       let fullText = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        for (const line of chunk.split("\n")) {
-          if (line.startsWith("data: ")) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              if (data.done) continue;
-              if (data.text) fullText += data.text;
+      // leftover holds an incomplete SSE line carried across chunk boundaries
+      let leftover = "";
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          // Prepend any leftover from the previous chunk before splitting
+          const raw = leftover + decoder.decode(value, { stream: true });
+          const lines = raw.split("\n");
+
+          // The last element may be an incomplete line — save it for next read
+          leftover = lines.pop() ?? "";
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                if (data.done) continue;
+                if (data.text) fullText += data.text;
+                setMessages((prev) => {
+                  const updated = [...prev];
+                  updated[updated.length - 1] = { role: "assistant", content: fullText };
+                  return updated;
+                });
+              } catch { /* skip malformed JSON */ }
+            }
+          }
+        }
+
+        // Process any remaining buffered line after the stream closes
+        if (leftover.startsWith("data: ")) {
+          try {
+            const data = JSON.parse(leftover.slice(6));
+            if (data.text) {
+              fullText += data.text;
               setMessages((prev) => {
                 const updated = [...prev];
                 updated[updated.length - 1] = { role: "assistant", content: fullText };
                 return updated;
               });
-            } catch { /* skip */ }
-          }
+            }
+          } catch { /* skip */ }
         }
+      } finally {
+        reader.releaseLock();
       }
-    } catch {
+
+      // Notify the user if the tab is in the background when chat completes
+      if (typeof document !== "undefined" && document.hidden) {
+        await showNotification("MeetingScribe", "Chat response ready").catch(() => {});
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        // Component unmounted or a new send was triggered — silently exit
+        return;
+      }
       setMessages((prev) => {
         const updated = [...prev];
         updated[updated.length - 1] = { role: "assistant", content: "Error: Failed to connect." };
         return updated;
       });
     }
+
     setStreaming(false);
     inputRef.current?.focus();
-  }, [id, input, messages, streaming]);
+  }, [id, input, messages, streaming, model, thinkingEffort]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
