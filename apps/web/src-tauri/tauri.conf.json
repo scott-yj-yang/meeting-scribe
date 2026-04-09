@@ -7,7 +7,7 @@
     "frontendDist": "http://localhost:3000",
     "devUrl": "http://localhost:3000",
     "beforeDevCommand": "",
-    "beforeBuildCommand": ""
+    "beforeBuildCommand": "bash scripts/build-desktop.sh"
   },
   "app": {
     "windows": [

@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::sync::Mutex;
 use tauri::Manager;
 
 /// Check if the Next.js backend is reachable.
@@ -61,15 +62,61 @@ async fn pick_audio_file(app: tauri::AppHandle) -> Result<Option<AudioFileResult
     }
 }
 
+/// Manages the Next.js sidecar server process.
+struct ServerProcess(Mutex<Option<std::process::Child>>);
+
+#[tauri::command]
+fn start_server(state: tauri::State<'_, ServerProcess>) -> Result<String, String> {
+    let mut guard = state.0.lock().unwrap();
+    if guard.is_some() {
+        return Ok("Server already running".into());
+    }
+
+    // In production, run the bundled standalone server
+    let exe_dir = std::env::current_exe()
+        .map_err(|e| e.to_string())?
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    let server_dir = exe_dir.join("sidecar");
+
+    if !server_dir.exists() {
+        return Err("Sidecar directory not found — running in dev mode?".into());
+    }
+
+    let child = std::process::Command::new("node")
+        .arg("server.js")
+        .current_dir(&server_dir)
+        .env("PORT", "3000")
+        .env("HOSTNAME", "localhost")
+        .spawn()
+        .map_err(|e| format!("Failed to start server: {}", e))?;
+
+    *guard = Some(child);
+    Ok("Server started on port 3000".into())
+}
+
+#[tauri::command]
+fn stop_server(state: tauri::State<'_, ServerProcess>) -> Result<(), String> {
+    let mut guard = state.0.lock().unwrap();
+    if let Some(mut child) = guard.take() {
+        child.kill().map_err(|e| format!("Failed to stop server: {}", e))?;
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .manage(ServerProcess(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             check_server_health,
             get_platform,
             pick_audio_file,
+            start_server,
+            stop_server,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
