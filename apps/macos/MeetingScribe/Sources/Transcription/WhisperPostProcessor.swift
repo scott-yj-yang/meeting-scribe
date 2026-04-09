@@ -117,6 +117,17 @@ final class WhisperPostProcessor: @unchecked Sendable {
             "-mc", "0",           // max-context 0 — prevents cascading hallucinations
         ]
 
+        // Add VAD if model available — filters silence to prevent hallucinations
+        if let vadPath = WhisperPostProcessor.findVadModel() {
+            process.arguments! += [
+                "--vad-model", vadPath,
+                "--vad-threshold", "0.5",
+                "--vad-min-speech-duration-ms", "250",
+                "--vad-min-silence-duration-ms", "100",
+            ]
+            print("[WhisperPostProcessor] VAD enabled (Silero)")
+        }
+
         let stderrPipe = Pipe()
         let stdoutPipe = Pipe()
         process.standardError = stderrPipe
@@ -401,6 +412,23 @@ final class WhisperPostProcessor: @unchecked Sendable {
                 if FileManager.default.fileExists(atPath: path) {
                     return path
                 }
+            }
+        }
+        return nil
+    }
+
+    private static func findVadModel() -> String? {
+        let searchDirs = [
+            "\(NSHomeDirectory())/.local/share/whisper-cpp",
+            "/opt/homebrew/share/whisper-cpp",
+            "/usr/local/share/whisper-cpp",
+            "\(NSHomeDirectory())/.local/share/whisper-cli",
+            "/opt/homebrew/share/whisper-cli",
+        ]
+        for dir in searchDirs {
+            let path = "\(dir)/silero-vad.onnx"
+            if FileManager.default.fileExists(atPath: path) {
+                return path
             }
         }
         return nil
