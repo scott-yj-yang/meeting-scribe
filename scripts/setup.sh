@@ -16,7 +16,7 @@ RED='\033[0;31m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-TOTAL_STEPS=10
+TOTAL_STEPS=11
 step() { echo -e "\n${BLUE}${BOLD}[$1/$TOTAL_STEPS]${NC} $2"; }
 ok()   { echo -e "  ${GREEN}✓${NC} $1"; }
 warn() { echo -e "  ${YELLOW}!${NC} $1"; }
@@ -333,14 +333,41 @@ else
     warn "To retry: cd $INSTALL_DIR/apps/macos/MeetingScribe && swift build -c release"
 fi
 
-# ── 8. Create output directory ───────────────────────────
-step 8 "Creating output directories..."
+# ── 8. Optional: Rust/Tauri for desktop app ─────────────
+step 8 "Checking Rust toolchain (optional, for desktop app)..."
+
+if command -v rustc &>/dev/null; then
+    ok "Rust $(rustc --version | awk '{print $2}') already installed"
+else
+    echo "  Rust is needed for the Tauri desktop wrapper (optional)."
+    echo "  Install later with: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+    warn "Skipping Rust — desktop app (Tauri) won't build, but web app works fine."
+fi
+
+# If Rust is available, install Tauri deps and verify
+if command -v cargo &>/dev/null; then
+    cd "$INSTALL_DIR/apps/web"
+    echo "  Checking Tauri Rust dependencies..."
+    if [[ -f src-tauri/Cargo.toml ]]; then
+        cd src-tauri
+        cargo check </dev/null 2>&1 | tail -3
+        if [[ $? -eq 0 ]]; then
+            ok "Tauri Rust dependencies ready"
+        else
+            warn "Tauri cargo check failed. Run: cd $INSTALL_DIR/apps/web/src-tauri && cargo check"
+        fi
+        cd "$INSTALL_DIR"
+    fi
+fi
+
+# ── 9. Create output directory ───────────────────────────
+step 9 "Creating output directories..."
 mkdir -p ~/MeetingScribe
 mkdir -p ~/Applications 2>/dev/null || true
 ok "~/MeetingScribe/ ready"
 
-# ── 9. Start services ────────────────────────────────────
-step 9 "Starting services..."
+# ── 10. Start services ───────────────────────────────────
+step 10 "Starting services..."
 
 # Install terminal server deps (node-pty may fail on some systems — that's OK)
 echo "  Installing terminal server dependencies..."
@@ -400,8 +427,8 @@ else
     fi
 fi
 
-# ── 10. Done! ────────────────────────────────────────────
-step 10 "Setup complete!"
+# ── 11. Done! ────────────────────────────────────────────
+step 11 "Setup complete!"
 
 echo ""
 echo -e "${GREEN}${BOLD}╔══════════════════════════════════════════════════════════╗${NC}"
@@ -414,6 +441,11 @@ if [[ -d ~/Applications/MeetingScribe.app ]]; then
 echo "    • macOS app:      Click the menu bar icon"
 fi
 echo "    • CLI:            meetingctl --help"
+if command -v cargo &>/dev/null; then
+echo "    • Desktop app:   cd apps/web && npm run tauri:dev"
+else
+echo "    • Desktop app:   Install Rust first (curl https://sh.rustup.rs | sh)"
+fi
 echo ""
 echo "  Services:"
 echo "    tmux attach -t meetingscribe     # View server logs"
