@@ -241,8 +241,11 @@ final class WhisperPostProcessor: @unchecked Sendable {
     /// Detects when any n-gram (1–25 words) repeats 3+ consecutive times
     /// and keeps only a single instance.
     static func collapseRepetitions(_ text: String) -> String {
-        var words = text.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
-        // Run multiple passes — collapsing can reveal new repetitions
+        // Pass 1: Sentence-level dedup
+        let sentenceCleaned = collapseSentenceRepetitions(text)
+
+        // Pass 2+: Word-level n-gram collapse (with normalization)
+        var words = sentenceCleaned.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
         for _ in 0..<5 {
             let before = words
             words = collapsePass(words)
@@ -251,22 +254,67 @@ final class WhisperPostProcessor: @unchecked Sendable {
         return words.joined(separator: " ")
     }
 
+    /// Collapse repeated sentences. Splits on sentence boundaries (. ! ?)
+    /// and removes consecutive duplicates (normalized comparison).
+    static func collapseSentenceRepetitions(_ text: String) -> String {
+        let pattern = "(?<=[.!?])\\s+"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return text }
+        let range = NSRange(text.startIndex..., in: text)
+        var sentences: [String] = []
+        var lastEnd = text.startIndex
+        regex.enumerateMatches(in: text, range: range) { match, _, _ in
+            guard let matchRange = match.flatMap({ Range($0.range, in: text) }) else { return }
+            let sentence = String(text[lastEnd..<matchRange.lowerBound])
+                .trimmingCharacters(in: .whitespaces)
+            if !sentence.isEmpty { sentences.append(sentence) }
+            lastEnd = matchRange.upperBound
+        }
+        let last = String(text[lastEnd...]).trimmingCharacters(in: .whitespaces)
+        if !last.isEmpty { sentences.append(last) }
+
+        guard sentences.count > 1 else { return text }
+
+        var deduped: [String] = [sentences[0]]
+        for i in 1..<sentences.count {
+            let prev = sentences[i-1].lowercased().trimmingCharacters(in: .punctuationCharacters)
+            let curr = sentences[i].lowercased().trimmingCharacters(in: .punctuationCharacters)
+            if curr != prev {
+                deduped.append(sentences[i])
+            }
+        }
+
+        return deduped.joined(separator: " ")
+    }
+
+    /// Normalize a word for fuzzy repetition matching:
+    /// lowercase + strip trailing/leading punctuation.
+    private static func normalize(_ word: String) -> String {
+        word.lowercased()
+            .trimmingCharacters(in: .punctuationCharacters)
+            .trimmingCharacters(in: .symbols)
+    }
+
     private static func collapsePass(_ words: [String]) -> [String] {
         var result: [String] = []
         var i = 0
         while i < words.count {
             var bestLen = 0
             var bestCount = 0
-            // Try phrase lengths from longest feasible down to 1
             let maxPhraseLen = min(25, (words.count - i) / 2)
             for plen in stride(from: maxPhraseLen, through: 1, by: -1) {
                 guard i + plen * 2 <= words.count else { continue }
-                let phrase = Array(words[i..<i+plen])
+                // Normalize for comparison (lowercase, strip punctuation)
+                let phrase = (i..<i+plen).map { normalize(words[$0]) }
                 var count = 1
                 var j = i + plen
-                while j + plen <= words.count && Array(words[j..<j+plen]) == phrase {
-                    count += 1
-                    j += plen
+                while j + plen <= words.count {
+                    let candidate = (j..<j+plen).map { normalize(words[$0]) }
+                    if candidate == phrase {
+                        count += 1
+                        j += plen
+                    } else {
+                        break
+                    }
                 }
                 if count >= 3 && plen * count > bestLen * bestCount {
                     bestLen = plen
@@ -274,6 +322,7 @@ final class WhisperPostProcessor: @unchecked Sendable {
                 }
             }
             if bestLen > 0 && bestCount >= 3 {
+                // Keep the first occurrence (original casing/punctuation)
                 result.append(contentsOf: words[i..<i+bestLen])
                 i += bestLen * bestCount
             } else {
