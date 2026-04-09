@@ -3,6 +3,14 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 
+const SUMMARY_TEMPLATES = [
+  { id: "default", label: "General Meeting" },
+  { id: "standup", label: "Daily Standup" },
+  { id: "planning", label: "Sprint Planning" },
+  { id: "retro", label: "Retrospective" },
+  { id: "one-on-one", label: "1:1 Meeting" },
+] as const;
+
 interface SummaryViewProps {
   content: string | null;
   meetingId: string;
@@ -106,6 +114,7 @@ export default function SummaryView({ content, meetingId, onTimestampClick }: Su
   const [showResummarize, setShowResummarize] = useState(false);
   const [customInstruction, setCustomInstruction] = useState("");
   const [claudeReady, setClaudeReady] = useState<boolean | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState("default");
   const [elapsed, setElapsed] = useState(0);
   const startTimeRef = useRef<number | null>(null);
   const cancelledRef = useRef(false);
@@ -180,13 +189,14 @@ export default function SummaryView({ content, meetingId, onTimestampClick }: Su
     setElapsed(0);
   }, [meetingId]);
 
-  const handleSummarize = useCallback(async (instruction?: string, force?: boolean) => {
+  const handleSummarize = useCallback(async (instruction?: string, force?: boolean, template?: string) => {
     setLoading(true);
     setError(null);
     try {
       const body: Record<string, unknown> = {};
       if (instruction) body.customInstruction = instruction;
       if (force) body.force = true;
+      if (template && template !== "default") body.template = template;
 
       let res = await fetch(`/api/meetings/${meetingId}/summarize`, {
         method: "POST",
@@ -242,7 +252,7 @@ export default function SummaryView({ content, meetingId, onTimestampClick }: Su
   }, [meetingId]);
 
   const handleResummarize = () => {
-    handleSummarize(customInstruction || undefined);
+    handleSummarize(customInstruction || undefined, undefined, selectedTemplate);
     setShowResummarize(false);
     setCustomInstruction("");
   };
@@ -318,6 +328,20 @@ export default function SummaryView({ content, meetingId, onTimestampClick }: Su
               className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               rows={3}
             />
+            <div className="mt-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Template
+              </label>
+              <select
+                value={selectedTemplate}
+                onChange={(e) => setSelectedTemplate(e.target.value)}
+                className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                {SUMMARY_TEMPLATES.map((t) => (
+                  <option key={t.id} value={t.id}>{t.label}</option>
+                ))}
+              </select>
+            </div>
             <div className="mt-3 flex items-center gap-2">
               <button
                 onClick={handleResummarize}
@@ -421,14 +445,25 @@ export default function SummaryView({ content, meetingId, onTimestampClick }: Su
           to enable summarization.
         </p>
       )}
-      <button
-        onClick={() => handleSummarize()}
-        disabled={loading || claudeReady === false}
-        title={claudeReady === false ? "Claude Code not installed" : undefined}
-        className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        Summarize with Claude
-      </button>
+      <div className="flex flex-col items-center gap-3">
+        <select
+          value={selectedTemplate}
+          onChange={(e) => setSelectedTemplate(e.target.value)}
+          className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        >
+          {SUMMARY_TEMPLATES.map((t) => (
+            <option key={t.id} value={t.id}>{t.label}</option>
+          ))}
+        </select>
+        <button
+          onClick={() => handleSummarize(undefined, undefined, selectedTemplate)}
+          disabled={loading || claudeReady === false}
+          title={claudeReady === false ? "Claude Code not installed" : undefined}
+          className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Summarize with Claude
+        </button>
+      </div>
     </div>
   );
 }
