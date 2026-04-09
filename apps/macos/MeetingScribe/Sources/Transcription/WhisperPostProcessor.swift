@@ -48,6 +48,36 @@ final class WhisperPostProcessor: @unchecked Sendable {
     static let maxNoSpeechProb = 0.6
     static let minAvgLogprob = -1.0
 
+    /// Known whisper hallucination phrases from YouTube training data.
+    /// Matched case-insensitively after stripping punctuation.
+    static let hallucinationPhrases: Set<String> = [
+        "thank you for watching",
+        "thanks for watching",
+        "thanks for listening",
+        "thank you for listening",
+        "subscribe to my channel",
+        "please subscribe",
+        "like and subscribe",
+        "please like and subscribe",
+        "don't forget to subscribe",
+        "hit the bell icon",
+        "see you in the next video",
+        "see you next time",
+        "leave a comment below",
+        "check out my other videos",
+        "turn on notifications",
+        "subtitles by",
+        "subtitles created by",
+        "translated by",
+        "amara org",
+        "you",
+        "bye bye",
+        "谢谢观看",
+        "请订阅",
+        "感谢收看",
+        "字幕由",
+    ]
+
     func transcribe(audioFile: URL) async throws -> TranscriptionResult {
         guard isAvailable else { throw WhisperError.notInstalled }
 
@@ -158,7 +188,11 @@ final class WhisperPostProcessor: @unchecked Sendable {
         }
 
         let rawText = confident.map { $0.text.trimmingCharacters(in: .whitespaces) }.joined(separator: " ")
-        let trimmed = WhisperPostProcessor.collapseRepetitions(rawText)
+        let (dehalluced, phraseCount) = WhisperPostProcessor.removeHallucinationPhrases(rawText)
+        if phraseCount > 0 {
+            print("[WhisperPostProcessor] Removed \(phraseCount) known hallucination phrases")
+        }
+        let trimmed = WhisperPostProcessor.collapseRepetitions(dehalluced)
 
         let segments = confident.map { seg in
             TranscriptSegment(
@@ -175,6 +209,33 @@ final class WhisperPostProcessor: @unchecked Sendable {
     }
 
     // MARK: - Post-processing
+
+    /// Remove known hallucination phrases from transcript text.
+    /// Returns the cleaned text and the count of phrases removed.
+    static func removeHallucinationPhrases(_ text: String) -> (text: String, removedCount: Int) {
+        var cleaned = text
+        var removedCount = 0
+
+        for phrase in hallucinationPhrases {
+            let normalizedPhrase = phrase.lowercased()
+            let escaped = NSRegularExpression.escapedPattern(for: normalizedPhrase)
+            let pattern = "\\b\(escaped)\\b[.!?,;]*"
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
+                let range = NSRange(cleaned.startIndex..., in: cleaned)
+                let matches = regex.numberOfMatches(in: cleaned, range: range)
+                if matches > 0 {
+                    removedCount += matches
+                    cleaned = regex.stringByReplacingMatches(in: cleaned, range: range, withTemplate: "")
+                }
+            }
+        }
+
+        // Collapse multiple spaces left by removals
+        cleaned = cleaned.replacingOccurrences(of: "\\s{2,}", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+
+        return (cleaned, removedCount)
+    }
 
     /// Collapse repeated phrases that whisper.cpp hallucinates.
     /// Detects when any n-gram (1–25 words) repeats 3+ consecutive times
