@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, useEffect } from "react";
 import SummaryView from "./SummaryView";
 import TranscriptView from "./TranscriptView";
 
@@ -30,6 +30,7 @@ export default function MeetingTabs({
 }: MeetingTabsProps) {
   const [activeTab, setActiveTab] = useState<Tab>(summaryContent ? "Summary" : "Transcript");
   const [copied, setCopied] = useState(false);
+  const [highlightTime, setHighlightTime] = useState<number | null>(null);
 
   const handleCopy = async () => {
     if (!rawMarkdown) return;
@@ -37,6 +38,20 @@ export default function MeetingTabs({
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  /** Called when a [HH:MM:SS] citation is clicked in the summary. */
+  const handleTimestampClick = useCallback((seconds: number) => {
+    setHighlightTime(seconds);
+    setActiveTab("Transcript");
+  }, []);
+
+  // Clear highlight after 3 seconds
+  useEffect(() => {
+    if (highlightTime != null) {
+      const timer = setTimeout(() => setHighlightTime(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [highlightTime]);
 
   return (
     <div>
@@ -61,10 +76,14 @@ export default function MeetingTabs({
 
       <div className="mt-6">
         {activeTab === "Summary" && (
-          <SummaryView content={summaryContent} meetingId={meetingId} />
+          <SummaryView
+            content={summaryContent}
+            meetingId={meetingId}
+            onTimestampClick={handleTimestampClick}
+          />
         )}
         {activeTab === "Transcript" && (
-          <TranscriptView segments={segments} />
+          <TranscriptView segments={segments} highlightTime={highlightTime} />
         )}
         {activeTab === "Raw Markdown" && (
           <div>
