@@ -35,12 +35,13 @@ export const listCommand = new Command("list")
       for (const m of meetings) {
         const shortId = m.id.slice(0, 8);
         const date = new Date(m.date).toLocaleDateString();
-        const duration = m.duration ? `${m.duration}m` : "—";
+        const dur = m.duration ? `${Math.floor(m.duration / 60)}m` : "—";
+        const status = m.status ?? "recorded";
         const statusColor =
-          m.status === "completed" ? chalk.green : chalk.yellow;
+          status === "completed" ? chalk.green : chalk.yellow;
 
         console.log(
-          `${shortId.padEnd(10)} ${date.padEnd(12)} ${duration.padEnd(10)} ${statusColor(m.status.padEnd(12))} ${m.title}`,
+          `${shortId.padEnd(10)} ${date.padEnd(12)} ${dur.padEnd(10)} ${statusColor(status.padEnd(12))} ${m.title}`,
         );
       }
 
