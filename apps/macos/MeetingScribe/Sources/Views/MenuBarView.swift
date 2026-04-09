@@ -420,6 +420,10 @@ struct MenuBarView: View {
                 .buttonStyle(.borderless)
             }
 
+            // Live notes
+            LiveNotesPanel(notes: $appState.meetingNotes)
+                .padding(.top, 4)
+
             // Stop button
             Button {
                 appState.toggleRecording()
