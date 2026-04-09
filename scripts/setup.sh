@@ -198,6 +198,21 @@ if [[ ! -f "$MODEL_PATH" ]]; then
     fi
 fi
 
+# Download Silero VAD model (used by whisper-cli for speech detection)
+VAD_PATH="$MODEL_DIR/silero-vad.onnx"
+if [[ -f "$VAD_PATH" ]]; then
+    ok "Silero VAD model ready"
+else
+    echo "  Downloading Silero VAD model (~2MB)..."
+    if curl -L --progress-bar -o "$VAD_PATH" \
+        "https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx"; then
+        ok "Silero VAD model downloaded"
+    else
+        warn "VAD download failed. Transcription will still work but with more hallucinations."
+        info "curl -L -o $VAD_PATH 'https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx'"
+    fi
+fi
+
 # ── 4. Clone repo ────────────────────────────────────────
 step 4 "Setting up repository..."
 
