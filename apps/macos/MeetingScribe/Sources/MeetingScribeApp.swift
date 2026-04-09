@@ -3,10 +3,11 @@ import SwiftUI
 @main
 struct MeetingScribeApp: App {
     @StateObject private var appState = AppState()
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
         // Main dashboard window
-        WindowGroup("MeetingScribe") {
+        Window("MeetingScribe Dashboard", id: "dashboard") {
             DashboardWindow()
                 .frame(minWidth: 900, minHeight: 600)
                 .environmentObject(appState)

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MenuBarView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.openWindow) private var openWindow
     @State private var showSettings = false
     @State private var showTodaysMeetings = false
 
@@ -50,19 +51,17 @@ struct MenuBarView: View {
                 .font(.system(.headline, design: .rounded))
                 .fontWeight(.bold)
             Spacer()
-            // Quick link to web dashboard
+            // Open dashboard window
             Button {
-                if let url = URL(string: appState.serverURL) {
-                    NSWorkspace.shared.open(url)
-                }
+                openWindow(id: "dashboard")
+                NSApp.activate(ignoringOtherApps: true)
             } label: {
-                Image(systemName: "globe")
+                Image(systemName: "macwindow")
                     .font(.system(size: 11))
-                    .foregroundStyle(appState.serverStatus == .connected ? .blue : .gray.opacity(0.4))
+                    .foregroundStyle(.blue)
             }
             .buttonStyle(.borderless)
-            .help("Open web dashboard")
-            .disabled(appState.serverStatus != .connected)
+            .help("Open Dashboard")
             // Server status dot
             Circle()
                 .fill(statusColor)
