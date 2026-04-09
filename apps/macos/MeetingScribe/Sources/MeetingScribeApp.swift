@@ -8,7 +8,7 @@ struct MeetingScribeApp: App {
     var body: some Scene {
         // Main dashboard window
         Window("MeetingScribe Dashboard", id: "dashboard") {
-            DashboardWindow()
+            NativeDashboard()
                 .frame(minWidth: 900, minHeight: 600)
                 .environmentObject(appState)
         }
