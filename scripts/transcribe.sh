@@ -250,6 +250,26 @@ format_duration() {
 
 DURATION_HUMAN=$(format_duration "$DURATION_SECS")
 
+# Build timestamp-aligned markdown from whisper JSON segments
+TRANSCRIPT_MD=$(python3 -c "
+import json, re
+
+with open('$TRANSCRIPT_FILE.json') as f:
+    data = json.load(f)
+
+segments = [s for s in data.get('segments',[]) if s.get('compression_ratio',0)<=2.4 and s.get('no_speech_prob',0)<=0.6 and s.get('avg_logprob',0)>=-1.0]
+
+for s in segments:
+    text = s['text'].strip()
+    if not text: continue
+    secs = int(s.get('start', 0))
+    h, rem = divmod(secs, 3600)
+    m, sec = divmod(rem, 60)
+    ts = f'[{h:02d}:{m:02d}:{sec:02d}]'
+    print(f'{ts} **Speaker**: {text}')
+    print()
+")
+
 # Create markdown
 MD_FILE="$OUTPUT_DIR/$(date +%Y-%m-%d-%H-%M)-$(echo "$TITLE" | tr ' ' '-' | tr '[:upper:]' '[:lower:]').md"
 mkdir -p "$OUTPUT_DIR"
@@ -270,7 +290,7 @@ participants: ["Speaker"]
 
 ## Transcript
 
-$TRANSCRIPT_TEXT
+$TRANSCRIPT_MD
 
 ## --- END TRANSCRIPT ---
 MDEOF
