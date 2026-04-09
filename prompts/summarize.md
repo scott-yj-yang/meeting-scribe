@@ -40,3 +40,4 @@ Brief description of what happens after this meeting — follow-up meetings, dea
 - All action items MUST use `- [ ]` checkbox format
 - Group related discussion points into coherent topics
 - Quote 1-2 notable verbatim statements if they capture key sentiments
+- **Timestamp citations**: When referencing specific discussions, decisions, or direct quotes, include the timestamp inline using the exact format `[HH:MM:SS]`. For example: "The team decided to postpone the launch **[00:12:34]**." Use the `[HH:MM:SS]` timestamps from the transcript segments to create accurate citations. Include at least one citation per Key Discussion Topic and per Decision Made so readers can jump to the source.
