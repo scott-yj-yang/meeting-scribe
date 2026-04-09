@@ -1,6 +1,5 @@
 use serde::Serialize;
 use std::sync::Mutex;
-use tauri::Manager;
 
 /// Check if the Next.js backend is reachable.
 #[tauri::command]
@@ -44,11 +43,14 @@ async fn pick_audio_file(app: tauri::AppHandle) -> Result<Option<AudioFileResult
         .blocking_pick_file();
 
     match file {
-        Some(path) => {
-            let path_str = path.to_string_lossy().to_string();
-            let metadata = std::fs::metadata(&path_str)
+        Some(file_path) => {
+            let path_buf = file_path
+                .into_path()
+                .map_err(|e| format!("Invalid file path: {}", e))?;
+            let path_str = path_buf.to_string_lossy().to_string();
+            let metadata = std::fs::metadata(&path_buf)
                 .map_err(|e| format!("Failed to read file: {}", e))?;
-            let name = std::path::Path::new(&path_str)
+            let name = path_buf
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
