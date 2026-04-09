@@ -6,12 +6,62 @@ import ReactMarkdown from "react-markdown";
 interface SummaryViewProps {
   content: string | null;
   meetingId: string;
+  onTimestampClick?: (seconds: number) => void;
 }
 
 function formatElapsed(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+/** Parse "[HH:MM:SS]" to total seconds, or return null. */
+function parseTimestamp(ts: string): number | null {
+  const match = ts.match(/^(\d{2}):(\d{2}):(\d{2})$/);
+  if (!match) return null;
+  return parseInt(match[1]) * 3600 + parseInt(match[2]) * 60 + parseInt(match[3]);
+}
+
+/**
+ * Renders text with [HH:MM:SS] patterns replaced by clickable citation buttons.
+ * Non-timestamp text passes through unchanged.
+ */
+function CitationText({
+  text,
+  onClick,
+}: {
+  text: string;
+  onClick?: (seconds: number) => void;
+}) {
+  if (!onClick) return <>{text}</>;
+
+  // Split on [HH:MM:SS] patterns, keeping the delimiters
+  const parts = text.split(/(\[\d{2}:\d{2}:\d{2}\])/g);
+
+  return (
+    <>
+      {parts.map((part, i) => {
+        const match = part.match(/^\[(\d{2}:\d{2}:\d{2})\]$/);
+        if (match) {
+          const seconds = parseTimestamp(match[1]);
+          if (seconds != null) {
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={() => onClick(seconds)}
+                className="mx-0.5 inline-flex items-center rounded bg-blue-50 dark:bg-blue-900/30 px-1 py-0.5 font-mono text-[11px] text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 hover:underline cursor-pointer transition-colors"
+                title={`Jump to ${match[1]} in transcript`}
+              >
+                {match[1]}
+              </button>
+            );
+          }
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </>
+  );
 }
 
 function SummarizingSkeleton({ elapsed, onCancel }: { elapsed: number; onCancel: () => void }) {
@@ -50,7 +100,7 @@ function SummarizingSkeleton({ elapsed, onCancel }: { elapsed: number; onCancel:
   );
 }
 
-export default function SummaryView({ content, meetingId }: SummaryViewProps) {
+export default function SummaryView({ content, meetingId, onTimestampClick }: SummaryViewProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showResummarize, setShowResummarize] = useState(false);
@@ -298,7 +348,46 @@ export default function SummaryView({ content, meetingId }: SummaryViewProps) {
         )}
 
         <div className="prose prose-sm dark:prose-invert max-w-none">
-          <ReactMarkdown>{content}</ReactMarkdown>
+          <ReactMarkdown
+            components={{
+              p: ({ children }) => (
+                <p>
+                  {Array.isArray(children)
+                    ? children.map((child, i) =>
+                        typeof child === "string" ? (
+                          <CitationText key={i} text={child} onClick={onTimestampClick} />
+                        ) : (
+                          child
+                        ),
+                      )
+                    : typeof children === "string" ? (
+                        <CitationText text={children} onClick={onTimestampClick} />
+                      ) : (
+                        children
+                      )}
+                </p>
+              ),
+              li: ({ children }) => (
+                <li>
+                  {Array.isArray(children)
+                    ? children.map((child, i) =>
+                        typeof child === "string" ? (
+                          <CitationText key={i} text={child} onClick={onTimestampClick} />
+                        ) : (
+                          child
+                        ),
+                      )
+                    : typeof children === "string" ? (
+                        <CitationText text={children} onClick={onTimestampClick} />
+                      ) : (
+                        children
+                      )}
+                </li>
+              ),
+            }}
+          >
+            {content}
+          </ReactMarkdown>
         </div>
       </div>
     );
