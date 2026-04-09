@@ -142,7 +142,7 @@ class AppState: ObservableObject {
                     }
                 }
                 let level = min(1.0, rms * 15)
-                nonisolated(unsafe) let capturedLevel = level
+                let capturedLevel = level
 
                 Task { @MainActor in
                     self?.audioLevel = capturedLevel

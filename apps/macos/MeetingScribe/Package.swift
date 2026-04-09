@@ -11,7 +11,9 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "MeetingScribe",
-            path: "Sources"
+            path: "Sources",
+            exclude: ["Resources/AppIcon.appiconset"],
+            resources: [.process("Resources")]
         ),
     ]
 )
