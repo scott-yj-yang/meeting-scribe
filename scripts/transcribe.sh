@@ -26,6 +26,10 @@ if [[ -z "$MODEL_PATH" ]]; then
         [[ -f "$dir/ggml-large-v3-turbo.bin" ]] && MODEL_PATH="$dir/ggml-large-v3-turbo.bin" && break
     done
 fi
+VAD_MODEL=""
+for dir in ~/.local/share/whisper-cli ~/.local/share/whisper-cpp /opt/homebrew/share/whisper-cli /opt/homebrew/share/whisper-cpp /usr/local/share/whisper-cpp; do
+    [[ -f "$dir/silero-vad.onnx" ]] && VAD_MODEL="$dir/silero-vad.onnx" && break
+done
 OUTPUT_DIR="${MEETINGSCRIBE_OUTPUT_DIR:-$HOME/MeetingScribe}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
@@ -110,6 +114,11 @@ fi
 
 # --- Step 2: Transcribe with whisper.cpp ---
 echo -e "${BLUE}[2/4] Transcribing with whisper.cpp (this may take a few minutes)...${NC}"
+if [[ -n "$VAD_MODEL" ]]; then
+    echo -e "${GREEN}  VAD enabled (Silero)${NC}"
+else
+    echo -e "${YELLOW}  VAD not available — install with: curl -L -o /opt/homebrew/share/whisper-cpp/silero-vad.onnx 'https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx'${NC}"
+fi
 TRANSCRIPT_FILE="$TMPDIR_WORK/transcript"
 
 whisper-cli \
@@ -126,6 +135,10 @@ whisper-cli \
     -lpt -0.5 \
     -sns \
     -mc 0 \
+    ${VAD_MODEL:+--vad-model "$VAD_MODEL"} \
+    ${VAD_MODEL:+--vad-threshold 0.5} \
+    ${VAD_MODEL:+--vad-min-speech-duration-ms 250} \
+    ${VAD_MODEL:+--vad-min-silence-duration-ms 100} \
     2>/dev/null
 
 if [[ ! -f "$TRANSCRIPT_FILE.json" ]]; then
