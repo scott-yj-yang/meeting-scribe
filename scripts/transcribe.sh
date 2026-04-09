@@ -269,10 +269,34 @@ def avg_prob(seg):
 
 segments = [s for s in data.get('transcription',[]) if avg_prob(s) >= 0.4]
 
-for s in segments:
-    text = s['text'].strip()
+# Merge consecutive segments at sentence boundaries
+def merge_at_sentence_boundaries(segs, max_duration=30.0):
+    if not segs:
+        return []
+    merged = []
+    cur_text = segs[0]['text'].strip()
+    cur_start = segs[0]['offsets']['from'] / 1000.0
+    cur_end = segs[0]['offsets']['to'] / 1000.0
+    for seg in segs[1:]:
+        duration = seg['offsets']['to'] / 1000.0 - cur_start
+        ends_with_punct = cur_text.endswith('.') or cur_text.endswith('!') or cur_text.endswith('?')
+        if ends_with_punct or duration > max_duration:
+            merged.append({'text': cur_text, 'start': cur_start, 'end': cur_end})
+            cur_text = seg['text'].strip()
+            cur_start = seg['offsets']['from'] / 1000.0
+            cur_end = seg['offsets']['to'] / 1000.0
+        else:
+            cur_text = (cur_text + ' ' + seg['text'].strip()).strip()
+            cur_end = seg['offsets']['to'] / 1000.0
+    merged.append({'text': cur_text, 'start': cur_start, 'end': cur_end})
+    return merged
+
+merged = merge_at_sentence_boundaries(segments)
+
+for s in merged:
+    text = s['text']
     if not text: continue
-    secs = int(s.get('offsets', {}).get('from', 0)) // 1000
+    secs = int(s['start'])
     h, rem = divmod(secs, 3600)
     m, sec = divmod(rem, 60)
     ts = f'[{h:02d}:{m:02d}:{sec:02d}]'
@@ -320,7 +344,30 @@ def avg_prob(seg):
     real = [t for t in tokens if not t['text'].startswith('[') and not t['text'].startswith('<')]
     return sum(t['p'] for t in real) / len(real) if real else 1.0
 segments = [s for s in data.get('transcription',[]) if avg_prob(s) >= 0.4]
-out = [{'speaker':'Speaker','text':s['text'].strip(),'startTime':s['offsets']['from']/1000.0,'endTime':s['offsets']['to']/1000.0} for s in segments if s['text'].strip()]
+
+def merge_at_sentence_boundaries(segs, max_duration=30.0):
+    if not segs:
+        return []
+    merged = []
+    cur_text = segs[0]['text'].strip()
+    cur_start = segs[0]['offsets']['from'] / 1000.0
+    cur_end = segs[0]['offsets']['to'] / 1000.0
+    for seg in segs[1:]:
+        duration = seg['offsets']['to'] / 1000.0 - cur_start
+        ends_with_punct = cur_text.endswith('.') or cur_text.endswith('!') or cur_text.endswith('?')
+        if ends_with_punct or duration > max_duration:
+            merged.append({'text': cur_text, 'start': cur_start, 'end': cur_end})
+            cur_text = seg['text'].strip()
+            cur_start = seg['offsets']['from'] / 1000.0
+            cur_end = seg['offsets']['to'] / 1000.0
+        else:
+            cur_text = (cur_text + ' ' + seg['text'].strip()).strip()
+            cur_end = seg['offsets']['to'] / 1000.0
+    merged.append({'text': cur_text, 'start': cur_start, 'end': cur_end})
+    return merged
+
+merged = merge_at_sentence_boundaries(segments)
+out = [{'speaker':'Speaker','text':s['text'],'startTime':s['start'],'endTime':s['end']} for s in merged if s['text']]
 print(json.dumps(out))
 ")
 
@@ -357,7 +404,12 @@ if [[ "$HTTP_CODE" == "201" ]]; then
         echo -e "${BLUE}Running Claude Code summarization...${NC}"
         PROMPTS_DIR="${MEETINGSCRIBE_PROMPTS_DIR:-$(dirname "$SCRIPT_DIR")/prompts}"
         if [[ -f "$PROMPTS_DIR/summarize.md" ]]; then
-            claude --allowedTools "Read" -p "$(cat "$PROMPTS_DIR/summarize.md")" "$MD_FILE"
+            ABS_MD_FILE="$(cd "$(dirname "$MD_FILE")" && pwd)/$(basename "$MD_FILE")"
+            FULL_PROMPT="$(cat "$PROMPTS_DIR/summarize.md")
+
+The meeting transcript file is located at: $ABS_MD_FILE
+Please read that file and produce the summary."
+            claude --allowedTools "Read" -p "$FULL_PROMPT"
         else
             echo -e "${YELLOW}Prompt template not found at $PROMPTS_DIR/summarize.md${NC}"
             echo "Run manually: meetingctl summarize $MEETING_ID"

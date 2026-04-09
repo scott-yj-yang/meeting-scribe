@@ -200,12 +200,13 @@ final class WhisperPostProcessor: @unchecked Sendable {
         }
         let trimmed = WhisperPostProcessor.collapseRepetitions(dehalluced)
 
-        let segments = confident.map { seg in
+        let mergedSegs = WhisperPostProcessor.mergeAtSentenceBoundaries(confident)
+        let segments = mergedSegs.map { seg in
             TranscriptSegment(
                 speaker: "Speaker",
-                text: WhisperPostProcessor.collapseRepetitions(seg.text.trimmingCharacters(in: .whitespaces)),
-                startTime: seg.startSeconds,
-                endTime: seg.endSeconds
+                text: WhisperPostProcessor.collapseRepetitions(seg.text),
+                startTime: seg.start,
+                endTime: seg.end
             )
         }.filter { !$0.text.isEmpty }
 
@@ -215,6 +216,38 @@ final class WhisperPostProcessor: @unchecked Sendable {
     }
 
     // MARK: - Post-processing
+
+    /// Merge short whisper segments at sentence boundaries to avoid mid-sentence breaks.
+    /// Consecutive segments are joined until the text ends with sentence punctuation
+    /// or the merged duration exceeds maxDuration seconds.
+    static func mergeAtSentenceBoundaries(_ segments: [WhisperSegment], maxDuration: Double = 30.0) -> [(text: String, start: Double, end: Double)] {
+        guard !segments.isEmpty else { return [] }
+
+        var merged: [(text: String, start: Double, end: Double)] = []
+        var currentText = segments[0].text.trimmingCharacters(in: .whitespaces)
+        var currentStart = segments[0].startSeconds
+        var currentEnd = segments[0].endSeconds
+
+        for i in 1..<segments.count {
+            let seg = segments[i]
+            let duration = seg.endSeconds - currentStart
+            let endsWithPunctuation = currentText.hasSuffix(".") || currentText.hasSuffix("!") || currentText.hasSuffix("?")
+
+            if endsWithPunctuation || duration > maxDuration {
+                merged.append((text: currentText, start: currentStart, end: currentEnd))
+                currentText = seg.text.trimmingCharacters(in: .whitespaces)
+                currentStart = seg.startSeconds
+                currentEnd = seg.endSeconds
+            } else {
+                currentText += " " + seg.text.trimmingCharacters(in: .whitespaces)
+                currentEnd = seg.endSeconds
+            }
+        }
+        // Don't forget the last accumulated segment
+        merged.append((text: currentText, start: currentStart, end: currentEnd))
+
+        return merged
+    }
 
     /// Remove known hallucination phrases from transcript text.
     /// Returns the cleaned text and the count of phrases removed.
