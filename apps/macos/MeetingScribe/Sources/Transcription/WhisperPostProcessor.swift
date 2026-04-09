@@ -26,6 +26,28 @@ final class WhisperPostProcessor: @unchecked Sendable {
         FileManager.default.fileExists(atPath: modelPath)
     }
 
+    /// A single segment from whisper.cpp JSON output, including confidence metrics.
+    struct WhisperSegment: Decodable {
+        let text: String
+        let start: Double
+        let end: Double
+        // swiftlint:disable identifier_name
+        let avg_logprob: Double?
+        let compression_ratio: Double?
+        let no_speech_prob: Double?
+        // swiftlint:enable identifier_name
+    }
+
+    struct WhisperJSON: Decodable {
+        let segments: [WhisperSegment]
+    }
+
+    /// Thresholds for filtering low-confidence segments.
+    /// Segments exceeding these are likely hallucinations.
+    static let maxCompressionRatio = 2.4
+    static let maxNoSpeechProb = 0.6
+    static let minAvgLogprob = -1.0
+
     func transcribe(audioFile: URL) async throws -> TranscriptionResult {
         guard isAvailable else { throw WhisperError.notInstalled }
 
@@ -37,14 +59,18 @@ final class WhisperPostProcessor: @unchecked Sendable {
         process.arguments = [
             "-m", modelPath,
             "-f", audioFile.path,
-            "-otxt",
+            "-ojf",               // full JSON output (includes confidence metrics)
             "-of", outputBase,
             "-l", "auto",
             "--no-timestamps", "false",
-            "-pp",       // print progress
-            "-ml", "80", // max segment length (chars) — prevents hallucination loops
-            "-bo", "3",  // best-of candidates — improves accuracy
-            "-et", "2.2", // entropy threshold — reject low-confidence (hallucinated) segments
+            "-pp",                // print progress
+            "-ml", "40",          // max segment length (chars)
+            "-bo", "5",           // best-of candidates
+            "-bs", "5",           // beam size
+            "-et", "2.4",         // entropy threshold
+            "-lpt", "-0.5",       // log probability threshold
+            "-sns",               // suppress non-speech tokens
+            "-noc",               // NEW: no context carry-over — prevents cascading hallucinations
         ]
 
         let stderrPipe = Pipe()
@@ -105,25 +131,96 @@ final class WhisperPostProcessor: @unchecked Sendable {
             throw WhisperError.transcriptionFailed
         }
 
-        let txtFile = outputBase + ".txt"
-        guard let text = try? String(contentsOfFile: txtFile, encoding: .utf8) else {
+        let jsonFile = outputBase + ".json"
+        guard let jsonData = FileManager.default.contents(atPath: jsonFile) else {
             throw WhisperError.outputNotFound
         }
 
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let decoder = JSONDecoder()
+        let whisperOutput = try decoder.decode(WhisperJSON.self, from: jsonData)
 
-        let segments = trimmed.isEmpty ? [] : [
+        // Filter out low-confidence segments (likely hallucinations)
+        let confident = whisperOutput.segments.filter { seg in
+            let comp = seg.compression_ratio ?? 0
+            let noSpeech = seg.no_speech_prob ?? 0
+            let logprob = seg.avg_logprob ?? 0
+
+            let passesCompression = comp <= WhisperPostProcessor.maxCompressionRatio
+            let passesSpeech = noSpeech <= WhisperPostProcessor.maxNoSpeechProb
+            let passesLogprob = logprob >= WhisperPostProcessor.minAvgLogprob
+
+            return passesCompression && passesSpeech && passesLogprob
+        }
+
+        let filteredCount = whisperOutput.segments.count - confident.count
+        if filteredCount > 0 {
+            print("[WhisperPostProcessor] Filtered \(filteredCount)/\(whisperOutput.segments.count) low-confidence segments")
+        }
+
+        let rawText = confident.map { $0.text.trimmingCharacters(in: .whitespaces) }.joined(separator: " ")
+        let trimmed = WhisperPostProcessor.collapseRepetitions(rawText)
+
+        let segments = confident.map { seg in
             TranscriptSegment(
                 speaker: "Speaker",
-                text: trimmed,
-                startTime: 0,
-                endTime: 0
+                text: WhisperPostProcessor.collapseRepetitions(seg.text.trimmingCharacters(in: .whitespaces)),
+                startTime: seg.start,
+                endTime: seg.end
             )
-        ]
+        }.filter { !$0.text.isEmpty }
 
-        try? FileManager.default.removeItem(atPath: txtFile)
+        try? FileManager.default.removeItem(atPath: jsonFile)
 
         return TranscriptionResult(text: trimmed, segments: segments)
+    }
+
+    // MARK: - Post-processing
+
+    /// Collapse repeated phrases that whisper.cpp hallucinates.
+    /// Detects when any n-gram (1–25 words) repeats 3+ consecutive times
+    /// and keeps only a single instance.
+    static func collapseRepetitions(_ text: String) -> String {
+        var words = text.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+        // Run multiple passes — collapsing can reveal new repetitions
+        for _ in 0..<5 {
+            let before = words
+            words = collapsePass(words)
+            if words == before { break }
+        }
+        return words.joined(separator: " ")
+    }
+
+    private static func collapsePass(_ words: [String]) -> [String] {
+        var result: [String] = []
+        var i = 0
+        while i < words.count {
+            var bestLen = 0
+            var bestCount = 0
+            // Try phrase lengths from longest feasible down to 1
+            let maxPhraseLen = min(25, (words.count - i) / 2)
+            for plen in stride(from: maxPhraseLen, through: 1, by: -1) {
+                guard i + plen * 2 <= words.count else { continue }
+                let phrase = Array(words[i..<i+plen])
+                var count = 1
+                var j = i + plen
+                while j + plen <= words.count && Array(words[j..<j+plen]) == phrase {
+                    count += 1
+                    j += plen
+                }
+                if count >= 3 && plen * count > bestLen * bestCount {
+                    bestLen = plen
+                    bestCount = count
+                }
+            }
+            if bestLen > 0 && bestCount >= 3 {
+                result.append(contentsOf: words[i..<i+bestLen])
+                i += bestLen * bestCount
+            } else {
+                result.append(words[i])
+                i += 1
+            }
+        }
+        return result
     }
 
     // MARK: - Private
