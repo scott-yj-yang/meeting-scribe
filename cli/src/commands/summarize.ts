@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { readFileSync, writeFileSync, mkdirSync } from "fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { execFileSync } from "child_process";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -23,7 +23,11 @@ async function summarizeMeeting(
   }
 
   // Read prompt template
-  const promptPath = join(config.promptsDir, `${promptName}.md`);
+  // Check templates/ subdirectory first, then root prompts/
+  let promptPath = join(config.promptsDir, "templates", `${promptName}.md`);
+  if (!existsSync(promptPath)) {
+    promptPath = join(config.promptsDir, `${promptName}.md`);
+  }
   let promptContent: string;
   try {
     promptContent = readFileSync(promptPath, "utf-8");

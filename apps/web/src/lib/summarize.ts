@@ -92,7 +92,7 @@ function buildPath(): string {
   return [...extra, process.env.PATH || ""].join(":");
 }
 
-export function startSummarizeJob(meetingId: string, customInstruction?: string): void {
+export function startSummarizeJob(meetingId: string, customInstruction?: string, template?: string): void {
   jobs.set(meetingId, { status: "running", startedAt: Date.now() });
 
   const projectRoot = join(process.cwd(), "../..");
@@ -129,6 +129,9 @@ export function startSummarizeJob(meetingId: string, customInstruction?: string)
   console.log(`[Summarize]   prompts: ${promptsDir}`);
 
   const args = ["summarize", meetingId];
+  if (template && template !== "default") {
+    args.push("--prompt", template);
+  }
   if (customInstruction) {
     args.push("--instruction", customInstruction);
   }

@@ -21,6 +21,7 @@ export async function POST(request: Request, { params }: Params) {
     // Read body
     let customInstruction: string | undefined;
     let force = false;
+    let template: string | undefined;
     try {
       const body = await request.json();
       if (body.customInstruction && typeof body.customInstruction === "string") {
@@ -28,6 +29,9 @@ export async function POST(request: Request, { params }: Params) {
       }
       if (body.force === true) {
         force = true;
+      }
+      if (body.template && typeof body.template === "string") {
+        template = body.template;
       }
     } catch {
       // Body may be empty
@@ -58,7 +62,7 @@ export async function POST(request: Request, { params }: Params) {
       clearJobStatus(id);
     }
 
-    startSummarizeJob(id, customInstruction);
+    startSummarizeJob(id, customInstruction, template);
 
     return NextResponse.json({ status: "started", meetingId: id }, { status: 202 });
   } catch (error) {
