@@ -110,20 +110,124 @@ TRANSCRIPT_FILE="$TMPDIR_WORK/transcript"
 whisper-cli \
     -m "$MODEL_PATH" \
     -f "$WAV_FILE" \
-    -otxt \
+    -ojf \
     -of "$TRANSCRIPT_FILE" \
     --no-timestamps false \
     -l auto \
+    -ml 40 \
+    -bo 5 \
+    -bs 5 \
+    -et 2.4 \
+    -lpt -0.5 \
+    -sns \
+    -noc \
     2>/dev/null
 
-if [[ ! -f "$TRANSCRIPT_FILE.txt" ]]; then
+if [[ ! -f "$TRANSCRIPT_FILE.json" ]]; then
     echo -e "${RED}Error: Transcription failed.${NC}"
     rm -rf "$TMPDIR_WORK"
     exit 1
 fi
 
-TRANSCRIPT_TEXT=$(cat "$TRANSCRIPT_FILE.txt")
-echo -e "${GREEN}Transcription complete ($(wc -w < "$TRANSCRIPT_FILE.txt") words)${NC}"
+# --- Post-process: confidence filtering + hallucination removal + repetition collapse ---
+echo -e "${BLUE}[2.5/4] Filtering hallucinations...${NC}"
+
+RAW_WORD_COUNT=$(python3 -c "
+import json
+with open('$TRANSCRIPT_FILE.json') as f:
+    data = json.load(f)
+print(sum(len(s['text'].split()) for s in data.get('segments',[])))
+")
+
+TRANSCRIPT_TEXT=$(python3 -c "
+import json, sys, re
+
+# --- Confidence-based segment filtering ---
+with open('$TRANSCRIPT_FILE.json') as f:
+    data = json.load(f)
+
+segments = data.get('segments', [])
+total = len(segments)
+confident = []
+for seg in segments:
+    comp = seg.get('compression_ratio', 0)
+    no_speech = seg.get('no_speech_prob', 0)
+    logprob = seg.get('avg_logprob', 0)
+    if comp <= 2.4 and no_speech <= 0.6 and logprob >= -1.0:
+        confident.append(seg)
+
+filtered = total - len(confident)
+if filtered > 0:
+    print(f'Filtered {filtered}/{total} low-confidence segments', file=sys.stderr)
+
+text = ' '.join(seg['text'].strip() for seg in confident)
+
+# --- Known hallucination phrase removal ---
+HALLUCINATIONS = [
+    'thank you for watching', 'thanks for watching',
+    'thanks for listening', 'thank you for listening',
+    'subscribe to my channel', 'please subscribe',
+    'like and subscribe', 'please like and subscribe',
+    'don.t forget to subscribe', 'hit the bell icon',
+    'see you in the next video', 'see you next time',
+    'leave a comment below', 'check out my other videos',
+    'turn on notifications', 'subtitles by',
+    'subtitles created by', 'translated by', 'amara org',
+]
+removed = 0
+for phrase in HALLUCINATIONS:
+    pattern = re.compile(r'\b' + re.escape(phrase) + r'\b[.!?,;]*', re.IGNORECASE)
+    text, n = pattern.subn('', text)
+    removed += n
+if removed > 0:
+    print(f'Removed {removed} known hallucination phrases', file=sys.stderr)
+text = re.sub(r'\s{2,}', ' ', text).strip()
+
+# --- Sentence-level dedup ---
+sentences = re.split(r'(?<=[.!?])\s+', text)
+if len(sentences) > 1:
+    deduped = [sentences[0]]
+    for i in range(1, len(sentences)):
+        prev_norm = re.sub(r'[^\w\s]', '', sentences[i-1].lower()).strip()
+        curr_norm = re.sub(r'[^\w\s]', '', sentences[i].lower()).strip()
+        if curr_norm != prev_norm:
+            deduped.append(sentences[i])
+    text = ' '.join(deduped)
+
+# --- Word-level n-gram collapse (normalized) ---
+def norm(w):
+    return re.sub(r'[^\w]', '', w.lower())
+
+def collapse(words):
+    result = []
+    i = 0
+    while i < len(words):
+        bl = bc = 0
+        for pl in range(min(25, (len(words)-i)//2), 0, -1):
+            if i+pl*2 > len(words): continue
+            ph = [norm(w) for w in words[i:i+pl]]
+            c = 1
+            j = i+pl
+            while j+pl <= len(words) and [norm(w) for w in words[j:j+pl]] == ph:
+                c += 1; j += pl
+            if c >= 3 and pl*c > bl*bc:
+                bl, bc = pl, c
+        if bl > 0 and bc >= 3:
+            result.extend(words[i:i+bl]); i += bl*bc
+        else:
+            result.append(words[i]); i += 1
+    return result
+
+words = text.split()
+for _ in range(5):
+    prev = words
+    words = collapse(words)
+    if words == prev: break
+print(' '.join(words))
+")
+
+CLEAN_WORD_COUNT=$(echo "$TRANSCRIPT_TEXT" | wc -w | tr -d ' ')
+echo -e "${GREEN}Transcription complete ($RAW_WORD_COUNT words → $CLEAN_WORD_COUNT after filtering)${NC}"
 
 # --- Step 3: Format as MeetingScribe markdown ---
 echo -e "${BLUE}[3/4] Formatting transcript...${NC}"
@@ -177,16 +281,14 @@ echo -e "${GREEN}Saved to: $MD_FILE${NC}"
 echo -e "${BLUE}[4/4] Uploading to web app...${NC}"
 
 # Build JSON payload
-SEGMENTS_JSON=$(echo "$TRANSCRIPT_TEXT" | awk '
-BEGIN { printf "["; first=1 }
-NF > 0 {
-    gsub(/"/, "\\\"")
-    if (!first) printf ","
-    printf "{\"speaker\":\"Speaker\",\"text\":\"%s\",\"startTime\":0,\"endTime\":0}", $0
-    first=0
-}
-END { printf "]" }
-')
+SEGMENTS_JSON=$(python3 -c "
+import json
+with open('$TRANSCRIPT_FILE.json') as f:
+    data = json.load(f)
+segments = [s for s in data.get('segments',[]) if s.get('compression_ratio',0)<=2.4 and s.get('no_speech_prob',0)<=0.6 and s.get('avg_logprob',0)>=-1.0]
+out = [{'speaker':'Speaker','text':s['text'].strip(),'startTime':s.get('start',0),'endTime':s.get('end',0)} for s in segments if s['text'].strip()]
+print(json.dumps(out))
+")
 
 AUTH_HEADER=""
 if [[ -n "$API_KEY" ]]; then
