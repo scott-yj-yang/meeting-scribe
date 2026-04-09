@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import { showNotification } from "@/lib/tauri";
+import { apiBase } from "@/lib/api-base";
 
 interface Message {
   role: "user" | "assistant";
@@ -26,7 +27,7 @@ export default function ChatPage() {
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    fetch(`/api/meetings/${id}`)
+    fetch(`${apiBase()}/api/meetings/${id}`)
       .then((r) => r.json())
       .then((data) => { if (data.title) setMeetingTitle(data.title); })
       .catch(() => {});
@@ -66,7 +67,7 @@ export default function ChatPage() {
     setStreaming(true);
 
     try {
-      const res = await fetch(`/api/meetings/${id}/chat`, {
+      const res = await fetch(`${apiBase()}/api/meetings/${id}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

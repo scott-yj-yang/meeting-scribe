@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { apiBase } from "@/lib/api-base";
 
 export default function MeetingActions({ meetingId }: { meetingId: string }) {
   const router = useRouter();
@@ -19,7 +20,7 @@ export default function MeetingActions({ meetingId }: { meetingId: string }) {
       return;
     }
 
-    await fetch(`/api/meetings/${meetingId}`, { method: "DELETE" });
+    await fetch(`${apiBase()}/api/meetings/${meetingId}`, { method: "DELETE" });
 
     if (isDetailPage) {
       router.push("/");

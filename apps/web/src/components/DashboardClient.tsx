@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import MeetingRow from "@/components/MeetingRow";
+import { apiBase } from "@/lib/api-base";
 
 interface MeetingData {
   id: string;
@@ -102,7 +103,7 @@ export default function DashboardClient({
     try {
       await Promise.all(
         Array.from(selected).map((id) =>
-          fetch(`/api/meetings/${id}`, { method: "DELETE" })
+          fetch(`${apiBase()}/api/meetings/${id}`, { method: "DELETE" })
         )
       );
       setSelected(new Set());

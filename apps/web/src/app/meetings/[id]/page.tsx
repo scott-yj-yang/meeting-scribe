@@ -5,6 +5,7 @@ import { formatDuration } from "@/lib/markdown";
 import MeetingTabs from "@/components/MeetingTabs";
 import ChatLauncher from "@/components/ChatLauncher";
 import AutoSummarizeTrigger from "@/components/AutoSummarizeTrigger";
+import { apiBase } from "@/lib/api-base";
 
 const MEETING_TYPE_COLORS: Record<string, string> = {
   "1:1": "bg-sky-50 text-sky-700 ring-sky-600/20 dark:bg-sky-950/50 dark:text-sky-300 dark:ring-sky-500/30",
@@ -207,7 +208,7 @@ export default async function MeetingDetailPage({
           Edit
         </Link>
         <a
-          href={`/api/meetings/${id}/export`}
+          href={`${apiBase()}/api/meetings/${id}/export`}
           className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 dark:focus:ring-offset-gray-950"
         >
           <svg

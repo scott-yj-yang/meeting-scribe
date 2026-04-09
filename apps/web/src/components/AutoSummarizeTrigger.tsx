@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { apiBase } from "@/lib/api-base";
 
 const AUTO_SUMMARIZE_KEY = "meetingscribe_auto_summarize";
 
@@ -23,7 +24,7 @@ export default function AutoSummarizeTrigger({
 
     triggered.current = true;
 
-    fetch(`/api/meetings/${meetingId}/summarize`, {
+    fetch(`${apiBase()}/api/meetings/${meetingId}/summarize`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
@@ -32,7 +33,7 @@ export default function AutoSummarizeTrigger({
         if (!res.ok) return;
         // Poll for completion then reload
         const poll = () => {
-          fetch(`/api/meetings/${meetingId}/summarize/status`)
+          fetch(`${apiBase()}/api/meetings/${meetingId}/summarize/status`)
             .then((r) => r.json())
             .then((data) => {
               if (data.status === "completed") {

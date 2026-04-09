@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { apiBase } from "@/lib/api-base";
 
 interface ClaudeHealthResponse {
   status: "ready" | "not-installed";
@@ -17,7 +18,7 @@ export default function ClaudeStatus() {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch("/api/health/claude");
+      const res = await fetch(`${apiBase()}/api/health/claude`);
       if (res.ok) {
         const json = await res.json();
         setData(json);

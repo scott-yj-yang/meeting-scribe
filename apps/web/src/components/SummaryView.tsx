@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
+import { apiBase } from "@/lib/api-base";
 
 const SUMMARY_TEMPLATES = [
   { id: "default", label: "General Meeting" },
@@ -121,13 +122,13 @@ export default function SummaryView({ content, meetingId, onTimestampClick }: Su
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    fetch("/api/health/claude")
+    fetch(`${apiBase()}/api/health/claude`)
       .then((res) => res.json())
       .then((data) => setClaudeReady(data.status === "ready"))
       .catch(() => setClaudeReady(false));
 
     // Check if a summarization job is already running (e.g. user navigated away and back)
-    fetch(`/api/meetings/${meetingId}/summarize/status`)
+    fetch(`${apiBase()}/api/meetings/${meetingId}/summarize/status`)
       .then((res) => res.json())
       .then((data) => {
         if (data.status === "running") {
@@ -139,7 +140,7 @@ export default function SummaryView({ content, meetingId, onTimestampClick }: Su
           // Resume polling
           const poll = async () => {
             if (cancelledRef.current) return;
-            const statusRes = await fetch(`/api/meetings/${meetingId}/summarize/status`);
+            const statusRes = await fetch(`${apiBase()}/api/meetings/${meetingId}/summarize/status`);
             const statusData = await statusRes.json();
             if (statusData.status === "completed") {
               window.location.reload();
@@ -183,7 +184,7 @@ export default function SummaryView({ content, meetingId, onTimestampClick }: Su
 
   const handleCancel = useCallback(async () => {
     // Cancel on server too
-    await fetch(`/api/meetings/${meetingId}/summarize`, { method: "DELETE" }).catch(() => {});
+    await fetch(`${apiBase()}/api/meetings/${meetingId}/summarize`, { method: "DELETE" }).catch(() => {});
     cancelledRef.current = true;
     setLoading(false);
     setElapsed(0);
@@ -198,7 +199,7 @@ export default function SummaryView({ content, meetingId, onTimestampClick }: Su
       if (force) body.force = true;
       if (template && template !== "default") body.template = template;
 
-      let res = await fetch(`/api/meetings/${meetingId}/summarize`, {
+      let res = await fetch(`${apiBase()}/api/meetings/${meetingId}/summarize`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -206,7 +207,7 @@ export default function SummaryView({ content, meetingId, onTimestampClick }: Su
 
       // If 409 (already running), auto-force retry
       if (res.status === 409) {
-        res = await fetch(`/api/meetings/${meetingId}/summarize`, {
+        res = await fetch(`${apiBase()}/api/meetings/${meetingId}/summarize`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...body, force: true }),
@@ -224,7 +225,7 @@ export default function SummaryView({ content, meetingId, onTimestampClick }: Su
         if (cancelledRef.current) return;
 
         const statusRes = await fetch(
-          `/api/meetings/${meetingId}/summarize/status`,
+          `${apiBase()}/api/meetings/${meetingId}/summarize/status`,
         );
         if (!statusRes.ok) {
           throw new Error("Failed to check summarization status");
@@ -265,7 +266,7 @@ export default function SummaryView({ content, meetingId, onTimestampClick }: Su
     setNotionLoading(true);
     setNotionError(null);
     try {
-      const res = await fetch(`/api/meetings/${meetingId}/notion`, {
+      const res = await fetch(`${apiBase()}/api/meetings/${meetingId}/notion`, {
         method: "POST",
       });
       const data = await res.json();
