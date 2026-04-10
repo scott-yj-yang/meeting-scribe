@@ -38,7 +38,9 @@ struct NativeSummaryView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
                         ProgressView().controlSize(.small)
-                        Text("Summarizing with Claude...").font(.subheadline).foregroundStyle(.secondary)
+                        Text("Summarizing with \(llmSettings.providerKind.displayName)...")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                         Spacer()
                         Button("Cancel") { cancelSummarization() }
                             .buttonStyle(.bordered)
@@ -188,23 +190,26 @@ struct NativeSummaryView: View {
         registerClaude: @Sendable @MainActor (ClaudeCLIProvider) -> Void
     ) async throws -> String {
         // Route streaming deltas through a @Sendable callback that hops to MainActor.
-        // Potential reordering across deltas is acceptable: local LLM streams are
-        // rate-limited, and interstitial status markers use assignment (not append).
-        let onToken: @Sendable (String) -> Void = { delta in
-            Task { @MainActor in store.append(delta) }
+        // DispatchQueue.main.async guarantees FIFO ordering (unlike unstructured MainActor
+        // Tasks, which have no FIFO guarantee and can reorder rapid tokens). Using
+        // MainActor.assumeIsolated is safe because the main DispatchQueue IS the
+        // MainActor executor.
+        let onToken: @Sendable (String) -> Void = { [store] delta in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    store.append(delta)
+                }
+            }
         }
 
         // Build provider in nonisolated context so the existential is not main-actor-isolated.
-        // `ClaudeCLIProvider` is not Sendable (holds a mutable Process reference), so we
-        // construct it on MainActor and also use it from nonisolated code below. The
-        // cross-isolation sharing is sound in practice because: (1) only this Task ever
-        // drives `summarize`, (2) only Cancel on MainActor ever calls `cancel()`, and (3)
-        // `Process.terminate()` is thread-safe. We mark the reference `nonisolated(unsafe)`
-        // to opt out of the Swift 6 region check.
+        // `ClaudeCLIProvider` conforms to `@unchecked Sendable` with an NSLock guarding
+        // its internal process reference, so it can be passed across isolation boundaries
+        // safely — no `nonisolated(unsafe)` needed.
         let provider: LLMProvider
         switch kind {
         case .claudeCLI:
-            nonisolated(unsafe) let p = ClaudeCLIProvider()
+            let p = ClaudeCLIProvider()
             await registerClaude(p)
             provider = p
         case .ollama:

@@ -1,9 +1,22 @@
 import Foundation
 
-final class ClaudeCLIProvider: LLMProvider {
+final class ClaudeCLIProvider: LLMProvider, @unchecked Sendable {
     var displayName: String { "Claude CLI" }
 
-    private var process: Process?
+    private let processLock = NSLock()
+    private var _process: Process?
+
+    private func setProcess(_ p: Process?) {
+        processLock.lock()
+        defer { processLock.unlock() }
+        _process = p
+    }
+
+    private func getProcess() -> Process? {
+        processLock.lock()
+        defer { processLock.unlock() }
+        return _process
+    }
 
     static var isInstalled: Bool {
         let paths = ["/opt/homebrew/bin/claude", "/usr/local/bin/claude", "\(NSHomeDirectory())/.local/bin/claude"]
@@ -31,7 +44,7 @@ final class ClaudeCLIProvider: LLMProvider {
         }
 
         let p = Process()
-        self.process = p
+        setProcess(p)
         p.executableURL = URL(fileURLWithPath: claudePath)
         p.arguments = ["--allowedTools", "Read", "-p", fullPrompt]
         let stdout = Pipe()
@@ -47,7 +60,7 @@ final class ClaudeCLIProvider: LLMProvider {
             onToken(chunk)
         }
         await Task.detached { p.waitUntilExit() }.value
-        self.process = nil
+        setProcess(nil)
 
         if p.terminationStatus != 0 && fullText.isEmpty {
             throw NSError(domain: "Claude", code: Int(p.terminationStatus), userInfo: [NSLocalizedDescriptionKey: "Claude exited with status \(p.terminationStatus)"])
@@ -56,8 +69,8 @@ final class ClaudeCLIProvider: LLMProvider {
     }
 
     func cancel() {
-        process?.terminate()
-        process = nil
+        getProcess()?.terminate()
+        setProcess(nil)
     }
 
     private func loadTemplate(_ name: String) throws -> String {
