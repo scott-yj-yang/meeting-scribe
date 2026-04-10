@@ -7,6 +7,8 @@ struct NativeSummaryView: View {
     @State private var isLoading = false
     @State private var selectedTemplate = "default"
     @State private var error: String?
+    @State private var currentProcess: Process?
+    @State private var streamingText = ""
 
     private let templates = [
         ("default", "General Meeting"), ("standup", "Daily Standup"),
@@ -17,10 +19,23 @@ struct NativeSummaryView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if isLoading {
-                VStack(spacing: 12) {
-                    ProgressView().controlSize(.large)
-                    Text("Summarizing with Claude...").font(.subheadline).foregroundStyle(.secondary)
-                }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        ProgressView().controlSize(.small)
+                        Text("Summarizing with Claude...").font(.subheadline).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Cancel") { cancelSummarization() }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                    }
+                    .padding(.horizontal)
+                    ScrollView {
+                        Markdown(streamingText.isEmpty ? "_Waiting for first tokens…_" : streamingText)
+                            .markdownTheme(.gitHub)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
+                    }
+                }
             } else if !summaryText.isEmpty {
                 HStack {
                     Picker("Template", selection: $selectedTemplate) {
@@ -71,26 +86,58 @@ struct NativeSummaryView: View {
         guard let dir = meeting.directoryURL else { return }
         let transcriptPath = dir.appendingPathComponent("transcript.md").path
         guard FileManager.default.fileExists(atPath: transcriptPath) else { error = "No transcript"; return }
-        isLoading = true; error = nil
 
-        Task.detached {
-            let result = await Self.runClaude(transcriptPath: transcriptPath, template: selectedTemplate)
-            await MainActor.run {
-                isLoading = false
-                switch result {
-                case .success(let text):
-                    summaryText = text
-                    try? text.write(to: dir.appendingPathComponent("summary.md"), atomically: true, encoding: .utf8)
-                case .failure(let err):
-                    error = err.localizedDescription
+        isLoading = true
+        streamingText = ""
+        error = nil
+
+        Task {
+            do {
+                let result = try await runClaudeStreaming(
+                    transcriptPath: transcriptPath,
+                    template: selectedTemplate
+                ) { delta in
+                    Task { @MainActor in
+                        streamingText += delta
+                    }
+                }
+                await MainActor.run {
+                    summaryText = result
+                    isLoading = false
+                    currentProcess = nil
+                    try? result.write(to: dir.appendingPathComponent("summary.md"), atomically: true, encoding: .utf8)
+                }
+            } catch is CancellationError {
+                await MainActor.run {
+                    isLoading = false
+                    currentProcess = nil
+                    streamingText = ""
+                }
+            } catch {
+                await MainActor.run {
+                    self.error = error.localizedDescription
+                    isLoading = false
+                    currentProcess = nil
                 }
             }
         }
     }
 
-    private static func runClaude(transcriptPath: String, template: String) async -> Result<String, Error> {
+    private func cancelSummarization() {
+        currentProcess?.terminate()
+        currentProcess = nil
+    }
+
+    private func runClaudeStreaming(
+        transcriptPath: String,
+        template: String,
+        onDelta: @escaping (String) -> Void
+    ) async throws -> String {
         let homeDir = NSHomeDirectory()
-        let templateDirs = ["\(homeDir)/Developer/meeting-scribe/prompts/templates", "\(homeDir)/Developer/meeting-scribe/prompts"]
+        let templateDirs = [
+            "\(homeDir)/Developer/meeting-scribe/prompts/templates",
+            "\(homeDir)/Developer/meeting-scribe/prompts",
+        ]
         var promptContent = ""
         for dir in templateDirs {
             for name in [template, "summarize"] {
@@ -100,30 +147,42 @@ struct NativeSummaryView: View {
             if !promptContent.isEmpty { break }
         }
         guard !promptContent.isEmpty else {
-            return .failure(NSError(domain: "", code: 0, userInfo: [NSLocalizedDescriptionKey: "No prompt template found"]))
+            throw NSError(domain: "LLM", code: 0, userInfo: [NSLocalizedDescriptionKey: "No prompt template found"])
         }
 
         let fullPrompt = "\(promptContent)\n\nThe meeting transcript file is located at: \(transcriptPath)\nPlease read that file and produce the summary."
         let claudePaths = ["/opt/homebrew/bin/claude", "/usr/local/bin/claude", "\(homeDir)/.local/bin/claude"]
         guard let claudePath = claudePaths.first(where: { FileManager.default.fileExists(atPath: $0) }) else {
-            return .failure(NSError(domain: "", code: 0, userInfo: [NSLocalizedDescriptionKey: "Claude CLI not installed"]))
+            throw NSError(domain: "LLM", code: 0, userInfo: [NSLocalizedDescriptionKey: "Claude CLI not installed"])
         }
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: claudePath)
         process.arguments = ["--allowedTools", "Read", "-p", fullPrompt]
-        let pipe = Pipe()
-        process.standardOutput = pipe
+        let stdout = Pipe()
+        process.standardOutput = stdout
         process.standardError = Pipe()
 
-        do {
-            try process.run()
-            process.waitUntilExit()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            guard let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !output.isEmpty else {
-                return .failure(NSError(domain: "", code: 0, userInfo: [NSLocalizedDescriptionKey: "Claude returned empty output"]))
-            }
-            return .success(output)
-        } catch { return .failure(error) }
+        // Store process so Cancel can terminate it
+        await MainActor.run { self.currentProcess = process }
+
+        var fullText = ""
+        let handle = stdout.fileHandleForReading
+
+        try process.run()
+
+        // Read asynchronously — handle.bytes gives an AsyncSequence<UInt8>
+        for try await line in handle.bytes.lines {
+            let chunk = line + "\n"
+            fullText += chunk
+            onDelta(chunk)
+        }
+
+        process.waitUntilExit()
+
+        if process.terminationStatus != 0 && fullText.isEmpty {
+            throw NSError(domain: "LLM", code: Int(process.terminationStatus), userInfo: [NSLocalizedDescriptionKey: "Claude exited with status \(process.terminationStatus)"])
+        }
+        return fullText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
