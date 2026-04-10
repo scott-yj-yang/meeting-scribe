@@ -1,4 +1,5 @@
 import SwiftUI
+import MarkdownUI
 
 struct NativeTranscriptView: View {
     let rawMarkdown: String
@@ -61,8 +62,8 @@ struct NativeTranscriptView: View {
                                         Text(seg.speaker)
                                             .font(.system(.caption, weight: .semibold))
                                     }
-                                    Text(seg.text)
-                                        .font(.system(.body))
+                                    Markdown(seg.text)
+                                        .markdownTheme(.gitHub)
                                         .textSelection(.enabled)
                                 }
                             }
