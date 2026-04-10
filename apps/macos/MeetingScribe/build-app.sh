@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 CONFIG="${1:-debug}"
 swift build --configuration "$CONFIG"
 
-BIN_DIR=".build/arm64-apple-macosx/$CONFIG"
+BIN_DIR="$(swift build --configuration "$CONFIG" --show-bin-path)"
 APP_DIR="$BIN_DIR/MeetingScribe.app"
 
 rm -rf "$APP_DIR"
