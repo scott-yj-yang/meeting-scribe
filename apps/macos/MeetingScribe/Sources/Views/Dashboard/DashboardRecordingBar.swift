@@ -8,20 +8,20 @@ struct DashboardRecordingBar: View {
     var body: some View {
         VStack(spacing: 0) {
             Divider()
-            HStack(spacing: 12) {
+            ZStack {
+                // Title field — leading-aligned overlay, only visible when not recording
                 if !appState.isRecording {
-                    TextField("Meeting title (optional)", text: $appState.meetingTitle)
-                        .textFieldStyle(.plain)
-                        .font(.system(.body, design: .rounded))
-                        .frame(maxWidth: 280)
-                    Spacer()
-                } else {
-                    Spacer()
+                    HStack {
+                        TextField("Meeting title (optional)", text: $appState.meetingTitle)
+                            .textFieldStyle(.plain)
+                            .font(.system(.body, design: .rounded))
+                            .frame(maxWidth: 280)
+                        Spacer()
+                    }
                 }
 
+                // Pill — always truly centered
                 RecordingPill()
-
-                Spacer()
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
