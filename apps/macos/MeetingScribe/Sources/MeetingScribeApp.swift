@@ -34,6 +34,8 @@ struct MeetingScribeApp: App {
             TabView {
                 LLMSettingsView()
                     .tabItem { Label("LLM", systemImage: "brain.head.profile") }
+                NotionSettingsView()
+                    .tabItem { Label("Notion", systemImage: "square.and.arrow.up.on.square") }
             }
             .frame(width: 560, height: 420)
         }
