@@ -1,0 +1,79 @@
+import Foundation
+
+final class ClaudeCLIProvider: LLMProvider {
+    var displayName: String { "Claude CLI" }
+
+    private var process: Process?
+
+    static var isInstalled: Bool {
+        let paths = ["/opt/homebrew/bin/claude", "/usr/local/bin/claude", "\(NSHomeDirectory())/.local/bin/claude"]
+        return paths.contains(where: { FileManager.default.fileExists(atPath: $0) })
+    }
+
+    func summarize(
+        transcript: String,
+        template: String,
+        onToken: @escaping (String) -> Void
+    ) async throws -> String {
+        // Materialize transcript to a temp file so claude can Read it
+        let tmpDir = FileManager.default.temporaryDirectory
+        let transcriptURL = tmpDir.appendingPathComponent("meetingscribe-\(UUID().uuidString).md")
+        try transcript.write(to: transcriptURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: transcriptURL) }
+
+        let promptContent = try loadTemplate(template)
+        let fullPrompt = "\(promptContent)\n\nThe meeting transcript file is located at: \(transcriptURL.path)\nPlease read that file and produce the summary."
+
+        let homeDir = NSHomeDirectory()
+        let claudePaths = ["/opt/homebrew/bin/claude", "/usr/local/bin/claude", "\(homeDir)/.local/bin/claude"]
+        guard let claudePath = claudePaths.first(where: { FileManager.default.fileExists(atPath: $0) }) else {
+            throw NSError(domain: "Claude", code: 0, userInfo: [NSLocalizedDescriptionKey: "Claude CLI not installed"])
+        }
+
+        let p = Process()
+        self.process = p
+        p.executableURL = URL(fileURLWithPath: claudePath)
+        p.arguments = ["--allowedTools", "Read", "-p", fullPrompt]
+        let stdout = Pipe()
+        p.standardOutput = stdout
+        p.standardError = FileHandle.nullDevice
+
+        try p.run()
+
+        var fullText = ""
+        for try await line in stdout.fileHandleForReading.bytes.lines {
+            let chunk = line + "\n"
+            fullText += chunk
+            onToken(chunk)
+        }
+        await Task.detached { p.waitUntilExit() }.value
+        self.process = nil
+
+        if p.terminationStatus != 0 && fullText.isEmpty {
+            throw NSError(domain: "Claude", code: Int(p.terminationStatus), userInfo: [NSLocalizedDescriptionKey: "Claude exited with status \(p.terminationStatus)"])
+        }
+        return fullText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func cancel() {
+        process?.terminate()
+        process = nil
+    }
+
+    private func loadTemplate(_ name: String) throws -> String {
+        let homeDir = NSHomeDirectory()
+        let templateDirs = [
+            "\(homeDir)/Developer/meeting-scribe/prompts/templates",
+            "\(homeDir)/Developer/meeting-scribe/prompts",
+        ]
+        for dir in templateDirs {
+            for candidate in [name, "summarize"] {
+                let path = "\(dir)/\(candidate).md"
+                if let c = try? String(contentsOfFile: path, encoding: .utf8), !c.isEmpty {
+                    return c
+                }
+            }
+        }
+        throw NSError(domain: "Claude", code: 1, userInfo: [NSLocalizedDescriptionKey: "No prompt template found"])
+    }
+}
