@@ -4,6 +4,9 @@ struct MeetingDetailView: View {
     let meeting: LocalMeeting
     let meetingStore: MeetingStore
     @State private var selectedTab = 0
+    @StateObject private var notionSettings = NotionSettings()
+    @State private var exporting = false
+    @State private var exportStatus: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -77,6 +80,63 @@ struct MeetingDetailView: View {
             }
             .frame(maxHeight: .infinity)
         }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    Task { await exportToNotion() }
+                } label: {
+                    if exporting {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Label("Export to Notion", systemImage: "square.and.arrow.up")
+                    }
+                }
+                .disabled(exporting || notionSettings.token.isEmpty || notionSettings.databaseId.isEmpty)
+                .help(notionSettings.token.isEmpty ? "Configure Notion in Settings (Cmd-,)" : "Export this meeting to Notion")
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if let status = exportStatus {
+                Text(status)
+                    .font(.caption)
+                    .padding(8)
+                    .background(.regularMaterial)
+                    .cornerRadius(8)
+                    .padding()
+            }
+        }
+    }
+
+    private func exportToNotion() async {
+        exporting = true
+        defer { exporting = false }
+        exportStatus = "Exporting…"
+
+        let summary: String = {
+            guard let dir = meeting.directoryURL else { return "" }
+            return (try? String(contentsOf: dir.appendingPathComponent("summary.md"), encoding: .utf8)) ?? ""
+        }()
+        let notes = meetingStore.loadNotes(meeting)
+        let transcript = meetingStore.loadTranscript(meeting)
+
+        do {
+            let pageId = try await NotionExporter.export(
+                meeting: meeting,
+                summary: summary,
+                notes: notes,
+                transcript: transcript,
+                token: notionSettings.token,
+                databaseId: notionSettings.databaseId
+            )
+            exportStatus = "Exported to Notion ✓"
+            print("[Notion] Exported page id: \(pageId)")
+        } catch {
+            exportStatus = "Export failed: \(error.localizedDescription)"
+        }
+
+        // Hide status after 3 seconds
+        try? await Task.sleep(nanoseconds: 3_000_000_000)
+        exportStatus = nil
     }
 
     private func formatDuration(_ seconds: TimeInterval) -> String {
