@@ -29,5 +29,13 @@ struct MeetingScribeApp: App {
             }
         }
         .menuBarExtraStyle(.window)
+
+        Settings {
+            TabView {
+                LLMSettingsView()
+                    .tabItem { Label("LLM", systemImage: "brain.head.profile") }
+            }
+            .frame(width: 560, height: 420)
+        }
     }
 }
