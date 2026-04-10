@@ -63,7 +63,8 @@ struct MarkdownSplitEditor: View {
                 Text(placeholder)
                     .font(.system(.body, design: .monospaced))
                     .foregroundStyle(.tertiary)
-                    .padding(12)
+                    .padding(.horizontal, 13)
+                    .padding(.vertical, 16)
                     .allowsHitTesting(false)
             }
         }
