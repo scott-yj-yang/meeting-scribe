@@ -1,17 +1,30 @@
 import SwiftUI
 import MarkdownUI
 
+/// MainActor-isolated streaming buffer for summary generation. Lives outside
+/// the View struct so `@Sendable` token callbacks can capture it without
+/// pulling in View state (which would force them to be main-actor-isolated
+/// and prevent passing to nonisolated `LLMProvider.summarize`).
+@MainActor
+final class SummaryStreamStore: ObservableObject {
+    @Published var text: String = ""
+    func append(_ delta: String) { text += delta }
+    func reset() { text = "" }
+    func set(_ value: String) { text = value }
+}
+
 struct NativeSummaryView: View {
     let meeting: LocalMeeting
     @State private var summaryText = ""
     @State private var isLoading = false
     @State private var selectedTemplate = "default"
     @State private var error: String?
-    @State private var currentProcess: Process?
-    @State private var streamingText = ""
+    @StateObject private var streamStore = SummaryStreamStore()
     @State private var cancelRequested = false
     @State private var lastSavedText = ""
     @State private var saveTask: Task<Void, Never>?
+    @StateObject private var llmSettings = LLMSettings()
+    @State private var currentClaudeProvider: ClaudeCLIProvider?
 
     private let templates = [
         ("default", "General Meeting"), ("standup", "Daily Standup"),
@@ -33,7 +46,7 @@ struct NativeSummaryView: View {
                     }
                     .padding(.horizontal)
                     ScrollView {
-                        Markdown(streamingText.isEmpty ? "_Waiting for first tokens…_" : streamingText)
+                        Markdown(streamStore.text.isEmpty ? "_Waiting for first tokens…_" : streamStore.text)
                             .markdownTheme(.gitHub)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding()
@@ -70,9 +83,11 @@ struct NativeSummaryView: View {
                     }.pickerStyle(.menu).frame(width: 200)
                     Button("Summarize with Claude") { runSummarization() }
                         .buttonStyle(.borderedProminent).controlSize(.large)
-                        .disabled(!isClaudeInstalled)
-                    if !isClaudeInstalled {
-                        Text("Claude CLI not found").font(.caption).foregroundStyle(.orange)
+                        .disabled(!providerAvailable)
+                    if !providerAvailable {
+                        Text("\(llmSettings.providerKind.displayName) not available — check Settings (Cmd-,)")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
                     }
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -83,9 +98,11 @@ struct NativeSummaryView: View {
         .onAppear { loadSummary() }
     }
 
-    private var isClaudeInstalled: Bool {
-        ["/opt/homebrew/bin/claude", "/usr/local/bin/claude", "\(NSHomeDirectory())/.local/bin/claude"]
-            .contains(where: { FileManager.default.fileExists(atPath: $0) })
+    private var providerAvailable: Bool {
+        switch llmSettings.providerKind {
+        case .claudeCLI: return ClaudeCLIProvider.isInstalled
+        case .ollama: return true  // best-effort; errors surface when invoked
+        }
     }
 
     private func loadSummary() {
@@ -108,114 +125,118 @@ struct NativeSummaryView: View {
     private func runSummarization() {
         guard let dir = meeting.directoryURL else { return }
         let transcriptPath = dir.appendingPathComponent("transcript.md").path
-        guard FileManager.default.fileExists(atPath: transcriptPath) else { error = "No transcript"; return }
+        guard let transcript = try? String(contentsOfFile: transcriptPath, encoding: .utf8), !transcript.isEmpty else {
+            error = "No transcript"; return
+        }
 
         isLoading = true
-        streamingText = ""
+        streamStore.reset()
         error = nil
         cancelRequested = false
 
+        // Snapshot settings so the nonisolated worker doesn't have to touch MainActor state
+        let kind = llmSettings.providerKind
+        let endpoint = llmSettings.ollamaEndpoint
+        let model = llmSettings.ollamaModel
+        let template = selectedTemplate
+        let store = streamStore
+
         Task {
             do {
-                let result = try await runClaudeStreaming(
-                    transcriptPath: transcriptPath,
-                    template: selectedTemplate
-                ) { delta in
-                    streamingText += delta
-                }
+                let result = try await summarizeWithProvider(
+                    transcript: transcript,
+                    store: store,
+                    kind: kind,
+                    endpoint: endpoint,
+                    model: model,
+                    template: template,
+                    registerClaude: { provider in
+                        currentClaudeProvider = provider
+                    }
+                )
                 await MainActor.run {
                     if cancelRequested {
                         cancelRequested = false
-                        streamingText = ""
+                        streamStore.reset()
                         isLoading = false
-                        currentProcess = nil
+                        currentClaudeProvider = nil
                         return
                     }
                     summaryText = result
                     lastSavedText = result
                     isLoading = false
-                    currentProcess = nil
+                    currentClaudeProvider = nil
                     try? result.write(to: dir.appendingPathComponent("summary.md"), atomically: true, encoding: .utf8)
-                }
-            } catch is CancellationError {
-                await MainActor.run {
-                    isLoading = false
-                    currentProcess = nil
-                    streamingText = ""
                 }
             } catch {
                 await MainActor.run {
                     self.error = error.localizedDescription
                     isLoading = false
-                    currentProcess = nil
+                    currentClaudeProvider = nil
                 }
             }
         }
     }
 
+    nonisolated private func summarizeWithProvider(
+        transcript: String,
+        store: SummaryStreamStore,
+        kind: LLMProviderKind,
+        endpoint: String,
+        model: String,
+        template: String,
+        registerClaude: @Sendable @MainActor (ClaudeCLIProvider) -> Void
+    ) async throws -> String {
+        // Route streaming deltas through a @Sendable callback that hops to MainActor.
+        // Potential reordering across deltas is acceptable: local LLM streams are
+        // rate-limited, and interstitial status markers use assignment (not append).
+        let onToken: @Sendable (String) -> Void = { delta in
+            Task { @MainActor in store.append(delta) }
+        }
+
+        // Build provider in nonisolated context so the existential is not main-actor-isolated.
+        // `ClaudeCLIProvider` is not Sendable (holds a mutable Process reference), so we
+        // construct it on MainActor and also use it from nonisolated code below. The
+        // cross-isolation sharing is sound in practice because: (1) only this Task ever
+        // drives `summarize`, (2) only Cancel on MainActor ever calls `cancel()`, and (3)
+        // `Process.terminate()` is thread-safe. We mark the reference `nonisolated(unsafe)`
+        // to opt out of the Swift 6 region check.
+        let provider: LLMProvider
+        switch kind {
+        case .claudeCLI:
+            nonisolated(unsafe) let p = ClaudeCLIProvider()
+            await registerClaude(p)
+            provider = p
+        case .ollama:
+            provider = OllamaProvider(endpoint: endpoint, model: model)
+        }
+
+        // Chunking for long transcripts
+        let chunks = TranscriptChunker.chunk(transcript, maxTokens: 3000, overlap: 100)
+        if chunks.count == 1 {
+            return try await provider.summarize(transcript: transcript, template: template, onToken: onToken)
+        }
+
+        // Multi-chunk: summarize each, then synthesize
+        await store.set("_Processing \(chunks.count) chunks…_\n\n")
+        var chunkSummaries: [String] = []
+        for (i, chunk) in chunks.enumerated() {
+            await store.append("\n### Chunk \(i + 1)/\(chunks.count)\n")
+            let summary = try await provider.summarize(transcript: chunk, template: template, onToken: onToken)
+            chunkSummaries.append(summary)
+        }
+        let combined = chunkSummaries.enumerated()
+            .map { "## Part \($0.offset + 1)\n\n\($0.element)" }
+            .joined(separator: "\n\n")
+        await store.set("_Synthesizing final summary…_\n\n")
+        return try await provider.summarize(transcript: combined, template: template, onToken: onToken)
+    }
+
     private func cancelSummarization() {
         cancelRequested = true
-        currentProcess?.terminate()
-        currentProcess = nil
+        currentClaudeProvider?.cancel()
+        currentClaudeProvider = nil
         isLoading = false
     }
 
-    @MainActor
-    private func runClaudeStreaming(
-        transcriptPath: String,
-        template: String,
-        onDelta: @escaping @MainActor (String) -> Void
-    ) async throws -> String {
-        let homeDir = NSHomeDirectory()
-        let templateDirs = [
-            "\(homeDir)/Developer/meeting-scribe/prompts/templates",
-            "\(homeDir)/Developer/meeting-scribe/prompts",
-        ]
-        var promptContent = ""
-        for dir in templateDirs {
-            for name in [template, "summarize"] {
-                let path = "\(dir)/\(name).md"
-                if let c = try? String(contentsOfFile: path, encoding: .utf8) { promptContent = c; break }
-            }
-            if !promptContent.isEmpty { break }
-        }
-        guard !promptContent.isEmpty else {
-            throw NSError(domain: "LLM", code: 0, userInfo: [NSLocalizedDescriptionKey: "No prompt template found"])
-        }
-
-        let fullPrompt = "\(promptContent)\n\nThe meeting transcript file is located at: \(transcriptPath)\nPlease read that file and produce the summary."
-        let claudePaths = ["/opt/homebrew/bin/claude", "/usr/local/bin/claude", "\(homeDir)/.local/bin/claude"]
-        guard let claudePath = claudePaths.first(where: { FileManager.default.fileExists(atPath: $0) }) else {
-            throw NSError(domain: "LLM", code: 0, userInfo: [NSLocalizedDescriptionKey: "Claude CLI not installed"])
-        }
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: claudePath)
-        process.arguments = ["--allowedTools", "Read", "-p", fullPrompt]
-        let stdout = Pipe()
-        process.standardOutput = stdout
-        process.standardError = FileHandle.nullDevice
-
-        // Store process so Cancel can terminate it
-        await MainActor.run { self.currentProcess = process }
-
-        var fullText = ""
-        let handle = stdout.fileHandleForReading
-
-        try process.run()
-
-        // Read asynchronously — handle.bytes gives an AsyncSequence<UInt8>
-        for try await line in handle.bytes.lines {
-            let chunk = line + "\n"
-            fullText += chunk
-            onDelta(chunk)
-        }
-
-        await Task.detached { process.waitUntilExit() }.value
-
-        if process.terminationStatus != 0 && fullText.isEmpty {
-            throw NSError(domain: "LLM", code: Int(process.terminationStatus), userInfo: [NSLocalizedDescriptionKey: "Claude exited with status \(process.terminationStatus)"])
-        }
-        return fullText.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
 }
