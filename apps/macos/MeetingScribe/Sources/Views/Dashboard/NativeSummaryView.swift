@@ -9,6 +9,7 @@ struct NativeSummaryView: View {
     @State private var error: String?
     @State private var currentProcess: Process?
     @State private var streamingText = ""
+    @State private var cancelRequested = false
 
     private let templates = [
         ("default", "General Meeting"), ("standup", "Daily Standup"),
@@ -90,6 +91,7 @@ struct NativeSummaryView: View {
         isLoading = true
         streamingText = ""
         error = nil
+        cancelRequested = false
 
         Task {
             do {
@@ -97,11 +99,16 @@ struct NativeSummaryView: View {
                     transcriptPath: transcriptPath,
                     template: selectedTemplate
                 ) { delta in
-                    Task { @MainActor in
-                        streamingText += delta
-                    }
+                    streamingText += delta
                 }
                 await MainActor.run {
+                    if cancelRequested {
+                        cancelRequested = false
+                        streamingText = ""
+                        isLoading = false
+                        currentProcess = nil
+                        return
+                    }
                     summaryText = result
                     isLoading = false
                     currentProcess = nil
@@ -124,14 +131,17 @@ struct NativeSummaryView: View {
     }
 
     private func cancelSummarization() {
+        cancelRequested = true
         currentProcess?.terminate()
         currentProcess = nil
+        isLoading = false
     }
 
+    @MainActor
     private func runClaudeStreaming(
         transcriptPath: String,
         template: String,
-        onDelta: @escaping (String) -> Void
+        onDelta: @escaping @MainActor (String) -> Void
     ) async throws -> String {
         let homeDir = NSHomeDirectory()
         let templateDirs = [
@@ -161,7 +171,7 @@ struct NativeSummaryView: View {
         process.arguments = ["--allowedTools", "Read", "-p", fullPrompt]
         let stdout = Pipe()
         process.standardOutput = stdout
-        process.standardError = Pipe()
+        process.standardError = FileHandle.nullDevice
 
         // Store process so Cancel can terminate it
         await MainActor.run { self.currentProcess = process }
@@ -178,7 +188,7 @@ struct NativeSummaryView: View {
             onDelta(chunk)
         }
 
-        process.waitUntilExit()
+        await Task.detached { process.waitUntilExit() }.value
 
         if process.terminationStatus != 0 && fullText.isEmpty {
             throw NSError(domain: "LLM", code: Int(process.terminationStatus), userInfo: [NSLocalizedDescriptionKey: "Claude exited with status \(process.terminationStatus)"])
