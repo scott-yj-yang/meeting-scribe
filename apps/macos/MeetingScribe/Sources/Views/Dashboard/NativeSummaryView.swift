@@ -1,4 +1,5 @@
 import SwiftUI
+import MarkdownUI
 
 struct NativeSummaryView: View {
     let meeting: LocalMeeting
@@ -28,9 +29,11 @@ struct NativeSummaryView: View {
                     Button("Resummarize") { runSummarization() }.buttonStyle(.bordered)
                 }
                 ScrollView {
-                    Text(LocalizedStringKey(summaryText))
-                        .font(.body).textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading).padding()
+                    Markdown(summaryText)
+                        .markdownTheme(.gitHub)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
                 }
             } else {
                 VStack(spacing: 16) {
