@@ -31,7 +31,7 @@ struct RecordingPill: View {
         .padding(.vertical, 12)
         .background(
             RoundedRectangle(cornerRadius: 30)
-                .fill(.background)
+                .fill(.regularMaterial)
                 .shadow(color: .black.opacity(0.15), radius: 10, y: 3)
         )
         .overlay(
@@ -42,8 +42,12 @@ struct RecordingPill: View {
 
     private func formatDuration(_ t: TimeInterval) -> String {
         let total = Int(t)
-        let m = total / 60
+        let h = total / 3600
+        let m = (total % 3600) / 60
         let s = total % 60
+        if h > 0 {
+            return String(format: "%d:%02d:%02d", h, m, s)
+        }
         return String(format: "%02d:%02d", m, s)
     }
 }
