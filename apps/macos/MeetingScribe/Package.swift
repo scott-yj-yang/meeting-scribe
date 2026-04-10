@@ -5,15 +5,22 @@ let package = Package(
     name: "MeetingScribe",
     platforms: [.macOS(.v15)],
     dependencies: [
-        // TODO: Add WhisperKit dependency once it supports macOS 26 SDK
-        // .package(url: "https://github.com/argmaxinc/WhisperKit.git", from: "0.9.0"),
+        .package(url: "https://github.com/gonzalezreal/swift-markdown-ui.git", from: "2.4.0"),
     ],
     targets: [
         .executableTarget(
             name: "MeetingScribe",
+            dependencies: [
+                .product(name: "MarkdownUI", package: "swift-markdown-ui"),
+            ],
             path: "Sources",
             exclude: ["Resources/AppIcon.appiconset"],
             resources: [.process("Resources")]
+        ),
+        .testTarget(
+            name: "MeetingScribeTests",
+            dependencies: ["MeetingScribe"],
+            path: "Tests"
         ),
     ]
 )
