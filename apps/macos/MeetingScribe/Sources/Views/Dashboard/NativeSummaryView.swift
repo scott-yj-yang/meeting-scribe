@@ -10,6 +10,8 @@ struct NativeSummaryView: View {
     @State private var currentProcess: Process?
     @State private var streamingText = ""
     @State private var cancelRequested = false
+    @State private var lastSavedText = ""
+    @State private var saveTask: Task<Void, Never>?
 
     private let templates = [
         ("default", "General Meeting"), ("standup", "Daily Standup"),
@@ -38,18 +40,26 @@ struct NativeSummaryView: View {
                     }
                 }
             } else if !summaryText.isEmpty {
-                HStack {
-                    Picker("Template", selection: $selectedTemplate) {
-                        ForEach(templates, id: \.0) { id, label in Text(label).tag(id) }
-                    }.pickerStyle(.menu).frame(width: 200)
-                    Button("Resummarize") { runSummarization() }.buttonStyle(.bordered)
-                }
-                ScrollView {
-                    Markdown(summaryText)
-                        .markdownTheme(.gitHub)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
+                VStack(spacing: 0) {
+                    HStack {
+                        Picker("Template", selection: $selectedTemplate) {
+                            ForEach(templates, id: \.0) { id, label in Text(label).tag(id) }
+                        }.pickerStyle(.menu).frame(width: 200)
+                        Button("Resummarize") { runSummarization() }.buttonStyle(.bordered)
+                        Spacer()
+                        if summaryText != lastSavedText {
+                            Text("Unsaved")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+
+                    MarkdownSplitEditor(text: $summaryText, placeholder: "Start writing the summary…")
+                        .onChange(of: summaryText) { _, newValue in
+                            scheduleSave(newValue)
+                        }
                 }
             } else {
                 VStack(spacing: 16) {
@@ -81,6 +91,18 @@ struct NativeSummaryView: View {
     private func loadSummary() {
         guard let dir = meeting.directoryURL else { return }
         summaryText = (try? String(contentsOf: dir.appendingPathComponent("summary.md"), encoding: .utf8)) ?? ""
+        lastSavedText = summaryText
+    }
+
+    private func scheduleSave(_ text: String) {
+        saveTask?.cancel()
+        saveTask = Task {
+            try? await Task.sleep(nanoseconds: 1_000_000_000)  // 1 second debounce
+            if Task.isCancelled { return }
+            guard let dir = meeting.directoryURL else { return }
+            try? text.write(to: dir.appendingPathComponent("summary.md"), atomically: true, encoding: .utf8)
+            await MainActor.run { lastSavedText = text }
+        }
     }
 
     private func runSummarization() {
@@ -110,6 +132,7 @@ struct NativeSummaryView: View {
                         return
                     }
                     summaryText = result
+                    lastSavedText = result
                     isLoading = false
                     currentProcess = nil
                     try? result.write(to: dir.appendingPathComponent("summary.md"), atomically: true, encoding: .utf8)
