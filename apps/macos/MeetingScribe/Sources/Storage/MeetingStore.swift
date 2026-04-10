@@ -107,7 +107,6 @@ class MeetingStore: ObservableObject {
         meetingType: String?,
         transcriptSnippet: String?,
         directoryURL: URL,
-        serverMeetingId: String? = nil,
         calendarEventTitle: String? = nil,
         notes: String? = nil
     ) -> LocalMeeting {
@@ -118,7 +117,6 @@ class MeetingStore: ObservableObject {
             duration: duration,
             meetingType: meetingType,
             transcriptSnippet: transcriptSnippet,
-            serverMeetingId: serverMeetingId,
             calendarEventTitle: calendarEventTitle,
             notes: notes
         )
@@ -135,7 +133,6 @@ struct LocalMeeting: Identifiable, Codable {
     var duration: TimeInterval
     var meetingType: String?
     var transcriptSnippet: String?
-    var serverMeetingId: String?
     var calendarEventTitle: String?
     var notes: String?
 
@@ -152,10 +149,8 @@ struct LocalMeeting: Identifiable, Codable {
         return FileManager.default.fileExists(atPath: dir.appendingPathComponent("audio.wav").path)
     }
 
-    var isSynced: Bool { serverMeetingId != nil }
-
     enum CodingKeys: String, CodingKey {
         case id, title, date, duration, meetingType, transcriptSnippet
-        case serverMeetingId, calendarEventTitle, notes
+        case calendarEventTitle, notes
     }
 }

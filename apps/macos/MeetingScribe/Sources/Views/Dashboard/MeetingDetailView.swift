@@ -26,10 +26,6 @@ struct MeetingDetailView: View {
                             .foregroundStyle(.blue)
                             .cornerRadius(4)
                     }
-                    if meeting.isSynced {
-                        Label("Synced", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                    }
                 }
                 .font(.subheadline)
                 .foregroundStyle(.secondary)

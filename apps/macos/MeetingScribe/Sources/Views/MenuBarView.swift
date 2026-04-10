@@ -35,7 +35,6 @@ struct MenuBarView: View {
         }
         .frame(width: 320)
         .onAppear {
-            appState.checkServerStatus()
             appState.audioCaptureManager.refreshMicList()
             Task { await appState.calendarManager.fetchCurrentAndUpcoming() }
         }
@@ -62,11 +61,6 @@ struct MenuBarView: View {
             }
             .buttonStyle(.borderless)
             .help("Open Dashboard")
-            // Server status dot
-            Circle()
-                .fill(statusColor)
-                .frame(width: 7, height: 7)
-                .help(statusText)
         }
         .padding(.horizontal, 16)
         .padding(.top, 14)
@@ -648,12 +642,6 @@ struct MenuBarView: View {
 
         VStack(alignment: .leading, spacing: 10) {
             Group {
-                Text("Server URL").font(.caption2).foregroundStyle(.secondary)
-                TextField("http://localhost:3000", text: $appState.serverURL)
-                    .textFieldStyle(.roundedBorder).font(.caption)
-            }
-
-            Group {
                 Text("Output Directory").font(.caption2).foregroundStyle(.secondary)
                 TextField("~/MeetingScribe", text: $appState.outputDirectory)
                     .textFieldStyle(.roundedBorder).font(.caption)
@@ -678,8 +666,6 @@ struct MenuBarView: View {
                 Divider()
             }
 
-            Toggle("Auto-sync to server after recording", isOn: $appState.autoPushToServer)
-                .font(.caption)
             Toggle("Save raw audio files", isOn: $appState.saveAudio)
                 .font(.caption)
         }
@@ -823,37 +809,8 @@ struct MenuBarView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 10)
 
-                // Sync + actions row
+                // Actions row
                 HStack(spacing: 6) {
-                    if appState.lastUploadedMeetingId != nil {
-                        actionButton(
-                            icon: "globe",
-                            iconColor: .green,
-                            label: "Web UI",
-                            enabled: true
-                        ) {
-                            appState.openInBrowser()
-                        }
-
-                        actionButton(
-                            icon: "icloud.slash",
-                            iconColor: .orange,
-                            label: "Unpush",
-                            enabled: true
-                        ) {
-                            appState.deleteFromServer()
-                        }
-                    } else {
-                        actionButton(
-                            icon: "icloud.and.arrow.up",
-                            iconColor: .blue,
-                            label: "Push",
-                            enabled: true
-                        ) {
-                            appState.pushToServer()
-                        }
-                    }
-
                     actionButton(
                         icon: "trash",
                         iconColor: .red,
@@ -877,37 +834,6 @@ struct MenuBarView: View {
                 .padding(.bottom, 10)
             }
 
-            // Upload status
-            Divider().padding(.horizontal, 12)
-
-            HStack(spacing: 6) {
-                if appState.lastUploadedMeetingId != nil {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.green)
-                    Text("Synced to server")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                } else if appState.isTranscribing {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.blue)
-                    Text("Will sync after transcription")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Image(systemName: "exclamationmark.circle")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.orange)
-                    Text("Not synced (server offline)")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-
             // Delete confirmation
             if appState.showDeleteConfirm {
                 Divider().padding(.horizontal, 12)
@@ -920,36 +846,15 @@ struct MenuBarView: View {
                         .foregroundStyle(.secondary)
 
                     VStack(spacing: 4) {
-                        if appState.currentMeeting?.isSynced == true {
-                            Button {
-                                withAnimation { appState.confirmDelete(alsoFromServer: true) }
-                            } label: {
-                                Text("Delete everywhere (local + server)")
-                                    .font(.caption)
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.red)
-
-                            Button {
-                                withAnimation { appState.confirmDelete(alsoFromServer: false) }
-                            } label: {
-                                Text("Delete local only")
-                                    .font(.caption)
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.bordered)
-                        } else {
-                            Button {
-                                withAnimation { appState.confirmDelete(alsoFromServer: false) }
-                            } label: {
-                                Text("Delete")
-                                    .font(.caption)
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.red)
+                        Button {
+                            withAnimation { appState.confirmDelete() }
+                        } label: {
+                            Text("Delete")
+                                .font(.caption)
+                                .frame(maxWidth: .infinity)
                         }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.red)
 
                         Button {
                             withAnimation { appState.cancelDelete() }
@@ -998,22 +903,6 @@ struct MenuBarView: View {
     }
 
     // MARK: - Helpers
-
-    private var statusColor: Color {
-        switch appState.serverStatus {
-        case .connected: return .green
-        case .disconnected: return .red
-        case .unknown: return .yellow
-        }
-    }
-
-    private var statusText: String {
-        switch appState.serverStatus {
-        case .connected: return "Server connected"
-        case .disconnected: return "Server offline"
-        case .unknown: return "Checking server..."
-        }
-    }
 
     private func timeAgo(from date: Date) -> String {
         let minutes = Int(Date().timeIntervalSince(date) / 60)

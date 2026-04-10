@@ -86,11 +86,6 @@ private struct MeetingRow: View {
                         .foregroundStyle(.blue)
                         .cornerRadius(3)
                 }
-                if meeting.isSynced {
-                    Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.green)
-                }
             }
         }
         .padding(.vertical, 2)

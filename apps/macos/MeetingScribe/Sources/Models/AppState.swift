@@ -5,7 +5,6 @@ import SwiftUI
 class AppState: ObservableObject {
     @Published var isRecording = false
     @Published var recordingDuration: TimeInterval = 0
-    @Published var serverStatus: ServerStatus = .unknown
     @Published var statusMessage: String? = nil
     @Published var meetingTitle: String = ""
     @Published var selectedMeetingType: String? = nil
@@ -15,7 +14,6 @@ class AppState: ObservableObject {
     // Post-recording state
     @Published var lastRecordingAudioURL: URL? = nil
     @Published var lastRecordingMarkdownURL: URL? = nil
-    @Published var lastUploadedMeetingId: String? = nil
     @Published var showPostRecording = false
     @Published var isTranscribing = false
     @Published var transcriptionETA: String? = nil
@@ -26,10 +24,8 @@ class AppState: ObservableObject {
     let calendarManager = CalendarManager()
     let meetingStore: MeetingStore
 
-    @AppStorage("serverURL") var serverURL = "http://localhost:3000"
     @AppStorage("outputDirectory") var outputDirectory = "~/MeetingScribe"
     @AppStorage("saveAudio") var saveAudio = true
-    @AppStorage("autoPushToServer") var autoPushToServer = true
 
     @Published var liveTranscriptActive = false
     @Published var audioLevel: Float = 0  // 0.0 - 1.0, shows mic is receiving audio
@@ -39,7 +35,6 @@ class AppState: ObservableObject {
     private var recordingStartDate: Date?
     let audioCaptureManager = AudioCaptureManager()
     let transcriptionManager = TranscriptionManager()
-    private let uploadQueue = UploadQueue()
     private var audioFileWriter: AudioFileWriter?
     private let whisperProcessor = WhisperPostProcessor()
 
@@ -260,45 +255,7 @@ class AppState: ObservableObject {
             try? notes.write(to: notesURL, atomically: true, encoding: .utf8)
         }
 
-        // Auto-push to server if enabled
-        var serverId: String? = nil
-        if autoPushToServer {
-            var calInfo: MeetingAPIClient.CalendarInfo? = nil
-            if let event = selectedCalendarEvent {
-                calInfo = MeetingAPIClient.CalendarInfo(
-                    eventId: event.id, title: event.title, organizer: event.organizer,
-                    attendees: event.attendees, start: event.startDate, end: event.endDate
-                )
-            }
-
-            let client = MeetingAPIClient(serverURL: serverURL)
-            do {
-                // Append notes to markdown for server upload
-                var uploadMarkdown = markdown
-                if !notes.isEmpty {
-                    uploadMarkdown += "\n\n## Meeting Notes\n\n\(notes)\n"
-                }
-
-                let id = try await client.uploadMeeting(
-                    title: title, date: startDate,
-                    duration: Int(recordingDuration),
-                    audioSources: ["microphone"],
-                    meetingType: selectedMeetingType?.lowercased(),
-                    rawMarkdown: uploadMarkdown,
-                    segments: segments,
-                    calendar: calInfo
-                )
-                serverId = id
-                lastUploadedMeetingId = id
-                statusMessage = "Saved & synced"
-            } catch {
-                lastUploadedMeetingId = nil
-                statusMessage = "Saved locally (sync failed)"
-            }
-        } else {
-            lastUploadedMeetingId = nil
-            statusMessage = "Saved locally"
-        }
+        statusMessage = "Saved"
 
         // Save to local database
         let meeting = meetingStore.createMeeting(
@@ -306,7 +263,6 @@ class AppState: ObservableObject {
             meetingType: selectedMeetingType?.lowercased(),
             transcriptSnippet: snippetText,
             directoryURL: meetingDir,
-            serverMeetingId: serverId,
             calendarEventTitle: selectedCalendarEvent?.title,
             notes: notes.isEmpty ? nil : notes
         )
@@ -324,7 +280,6 @@ class AppState: ObservableObject {
         currentMeeting = meeting
         lastRecordingAudioURL = meeting.hasAudio ? meeting.directoryURL?.appendingPathComponent("audio.wav") : nil
         lastRecordingMarkdownURL = meeting.hasTranscript ? meeting.directoryURL?.appendingPathComponent("transcript.md") : nil
-        lastUploadedMeetingId = meeting.serverMeetingId
         lastTranscriptSnippet = meeting.transcriptSnippet
         statusMessage = meeting.title
         showPostRecording = true
@@ -349,88 +304,14 @@ class AppState: ObservableObject {
         }
     }
 
-    func openInBrowser() {
-        guard let meetingId = lastUploadedMeetingId else { return }
-        if let url = URL(string: "\(serverURL)/meetings/\(meetingId)") {
-            NSWorkspace.shared.open(url)
-        }
-    }
-
-    func pushToServer() {
-        guard let meeting = currentMeeting else { return }
-        Task {
-            statusMessage = "Syncing..."
-            let transcript = meetingStore.loadTranscript(meeting)
-            let notes = meetingStore.loadNotes(meeting)
-            var uploadMd = transcript
-            if !notes.isEmpty {
-                uploadMd += "\n\n## Meeting Notes\n\n\(notes)\n"
-            }
-
-            let client = MeetingAPIClient(serverURL: serverURL)
-            do {
-                let id = try await client.uploadMeeting(
-                    title: meeting.title, date: meeting.date,
-                    duration: Int(meeting.duration),
-                    audioSources: ["microphone"],
-                    meetingType: meeting.meetingType,
-                    rawMarkdown: uploadMd,
-                    segments: [],
-                    calendar: nil
-                )
-                var updated = meeting
-                updated.serverMeetingId = id
-                meetingStore.save(updated)
-                currentMeeting = updated
-                lastUploadedMeetingId = id
-                statusMessage = "Synced"
-            } catch {
-                statusMessage = "Sync failed"
-            }
-        }
-    }
-
-    func deleteFromServer() {
-        guard let meetingId = lastUploadedMeetingId else { return }
-        Task {
-            guard let url = URL(string: "\(serverURL)/api/meetings/\(meetingId)") else { return }
-            var request = URLRequest(url: url)
-            request.httpMethod = "DELETE"
-            do {
-                let (_, response) = try await URLSession.shared.data(for: request)
-                if let http = response as? HTTPURLResponse, http.statusCode == 204 {
-                    if var meeting = currentMeeting {
-                        meeting.serverMeetingId = nil
-                        meetingStore.save(meeting)
-                        currentMeeting = meeting
-                    }
-                    lastUploadedMeetingId = nil
-                    statusMessage = "Removed from server"
-                }
-            } catch {
-                statusMessage = "Delete failed"
-            }
-        }
-    }
-
     @Published var showDeleteConfirm = false
 
     func promptDelete() {
         showDeleteConfirm = true
     }
 
-    func confirmDelete(alsoFromServer: Bool) {
+    func confirmDelete() {
         guard let meeting = currentMeeting else { return }
-
-        if alsoFromServer, let serverId = meeting.serverMeetingId {
-            Task {
-                guard let url = URL(string: "\(serverURL)/api/meetings/\(serverId)") else { return }
-                var request = URLRequest(url: url)
-                request.httpMethod = "DELETE"
-                _ = try? await URLSession.shared.data(for: request)
-            }
-        }
-
         meetingStore.delete(meeting)
         showDeleteConfirm = false
         dismissPostRecording()
@@ -444,7 +325,6 @@ class AppState: ObservableObject {
         showPostRecording = false
         lastRecordingAudioURL = nil
         lastRecordingMarkdownURL = nil
-        lastUploadedMeetingId = nil
         lastTranscriptSnippet = nil
         currentMeeting = nil
         statusMessage = nil
@@ -456,29 +336,4 @@ class AppState: ObservableObject {
         let sec = seconds % 60
         return sec > 0 ? "~\(min)m \(sec)s" : "~\(min)m"
     }
-
-    // MARK: - Server
-
-    func checkServerStatus() {
-        Task {
-            guard let url = URL(string: "\(serverURL)/api/meetings?limit=1") else {
-                serverStatus = .disconnected
-                return
-            }
-            do {
-                let (_, response) = try await URLSession.shared.data(from: url)
-                if let http = response as? HTTPURLResponse, http.statusCode == 200 {
-                    serverStatus = .connected
-                } else {
-                    serverStatus = .disconnected
-                }
-            } catch {
-                serverStatus = .disconnected
-            }
-        }
-    }
-}
-
-enum ServerStatus {
-    case connected, disconnected, unknown
 }
