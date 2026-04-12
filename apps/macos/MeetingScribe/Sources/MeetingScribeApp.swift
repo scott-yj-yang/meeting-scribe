@@ -38,6 +38,8 @@ struct MeetingScribeApp: App {
 
         Settings {
             TabView {
+                SetupView()
+                    .tabItem { Label("Setup", systemImage: "arrow.down.circle") }
                 LLMSettingsView()
                     .tabItem { Label("LLM", systemImage: "brain.head.profile") }
                 NotionSettingsView()
