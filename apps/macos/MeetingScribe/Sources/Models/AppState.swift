@@ -20,6 +20,7 @@ class AppState: ObservableObject {
     @Published var transcriptionProgress: Double = 0
     @Published var lastTranscriptSnippet: String? = nil
     @Published var currentMeeting: LocalMeeting? = nil
+    @Published var lastCompletedMeeting: LocalMeeting? = nil
 
     let calendarManager = CalendarManager()
     let meetingStore: MeetingStore
@@ -272,6 +273,7 @@ class AppState: ObservableObject {
         selectedMeetingType = nil
         selectedCalendarEvent = nil
         meetingNotes = ""
+        lastCompletedMeeting = meeting
     }
 
     // MARK: - Post-recording actions

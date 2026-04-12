@@ -45,6 +45,9 @@ struct NativeDashboard: View {
             } detail: {
                 if let meeting = selectedMeeting {
                     MeetingDetailView(meeting: meeting, meetingStore: appState.meetingStore)
+                } else if appState.showPostRecording {
+                    DashboardPostRecordingOverlay()
+                        .animation(.easeInOut(duration: 0.3), value: appState.isTranscribing)
                 } else {
                     VStack(spacing: 16) {
                         Image(systemName: "waveform.badge.mic")
@@ -66,6 +69,15 @@ struct NativeDashboard: View {
         .onAppear {
             appState.meetingStore.loadAll()
             Task { await appState.calendarManager.fetchCurrentAndUpcoming() }
+        }
+        .onChange(of: appState.lastCompletedMeeting) { _, newMeeting in
+            if let meeting = newMeeting {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    selectedMeeting = meeting
+                    appState.lastCompletedMeeting = nil
+                    appState.showPostRecording = false
+                }
+            }
         }
     }
 }
