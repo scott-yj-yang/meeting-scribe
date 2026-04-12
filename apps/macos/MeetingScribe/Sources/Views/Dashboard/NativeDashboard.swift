@@ -9,22 +9,24 @@ struct NativeDashboard: View {
     var body: some View {
         VStack(spacing: 0) {
             NavigationSplitView {
-                List(selection: $selectedMeeting) {
-                    DashboardCalendarSection()
+                VStack(spacing: 0) {
+                    DashboardCalendarBanner()
 
-                    MeetingListContent(
-                        meetings: appState.meetingStore.meetings,
-                        searchText: searchText,
-                        selectedType: selectedType,
-                        onDelete: { meeting in
-                            appState.meetingStore.delete(meeting)
-                            if selectedMeeting?.id == meeting.id {
-                                selectedMeeting = nil
+                    List(selection: $selectedMeeting) {
+                        MeetingListContent(
+                            meetings: appState.meetingStore.meetings,
+                            searchText: searchText,
+                            selectedType: selectedType,
+                            onDelete: { meeting in
+                                appState.meetingStore.delete(meeting)
+                                if selectedMeeting?.id == meeting.id {
+                                    selectedMeeting = nil
+                                }
                             }
-                        }
-                    )
+                        )
+                    }
+                    .searchable(text: $searchText, prompt: "Search meetings")
                 }
-                .searchable(text: $searchText, prompt: "Search meetings")
                 .toolbar {
                     ToolbarItem(placement: .automatic) {
                         Menu {

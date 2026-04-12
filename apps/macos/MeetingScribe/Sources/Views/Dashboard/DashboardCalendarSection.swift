@@ -1,111 +1,130 @@
 import SwiftUI
 
-struct DashboardCalendarSection: View {
+struct DashboardCalendarBanner: View {
     @EnvironmentObject var appState: AppState
+    @State private var isExpanded = false
 
     var body: some View {
-        Section {
-            if let suggested = appState.calendarManager.suggestedEvent {
-                suggestedEventRow(suggested)
-            }
-
-            if !appState.calendarManager.upcomingEvents.isEmpty {
-                DisclosureGroup("Today's meetings (\(appState.calendarManager.upcomingEvents.count))") {
-                    ForEach(appState.calendarManager.upcomingEvents) { event in
-                        eventRow(event)
-                    }
-                }
-            }
-
+        VStack(spacing: 0) {
             if appState.calendarManager.accessDenied {
-                HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                    Text("Calendar access required")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Grant") {
-                        appState.calendarManager.openCalendarSettings()
-                    }
-                    .buttonStyle(.plain)
-                    .font(.caption)
-                    .foregroundStyle(.blue)
+                accessDeniedBanner
+            } else if let suggested = appState.calendarManager.suggestedEvent {
+                suggestedEventBanner(suggested)
+
+                if isExpanded {
+                    expandedEventsList
                 }
             }
-        } header: {
-            Label("Calendar", systemImage: "calendar")
+
+            Divider()
         }
+        .animation(.easeInOut(duration: 0.2), value: isExpanded)
     }
 
-    private func suggestedEventRow(_ event: CalendarManager.CalendarEvent) -> some View {
-        Button {
-            toggleSelection(event)
-        } label: {
-            HStack(spacing: 8) {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(event.isHappeningNow ? Color.red : Color.blue)
-                    .frame(width: 3, height: 36)
+    // MARK: - Suggested Event Banner
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(event.isHappeningNow ? "Happening now" : "Starting soon")
-                        .font(.system(size: 9, weight: .semibold))
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(event.isHappeningNow ? Color.red.opacity(0.15) : Color.blue.opacity(0.15))
-                        .foregroundStyle(event.isHappeningNow ? .red : .blue)
-                        .cornerRadius(3)
+    private func suggestedEventBanner(_ event: CalendarManager.CalendarEvent) -> some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(event.isHappeningNow ? Color.red : Color.blue)
+                .frame(width: 8, height: 8)
 
-                    Text(event.title)
-                        .font(.system(.body, design: .rounded, weight: .medium))
-                        .lineLimit(1)
+            Text(event.isHappeningNow ? "Now" : "Next")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(event.isHappeningNow ? .red : .blue)
 
-                    HStack(spacing: 6) {
+            Text(event.title)
+                .font(.subheadline)
+                .lineLimit(1)
+
+            Spacer()
+
+            Text(formatTimeRange(event))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Button {
+                toggleSelection(event)
+            } label: {
+                Image(systemName: isSelected(event) ? "checkmark.circle.fill" : "checkmark.circle")
+                    .foregroundStyle(isSelected(event) ? .blue : .secondary)
+            }
+            .buttonStyle(.plain)
+
+            if !appState.calendarManager.upcomingEvents.isEmpty {
+                Button {
+                    isExpanded.toggle()
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .contentShape(Rectangle())
+    }
+
+    // MARK: - Expanded Events List
+
+    private var expandedEventsList: some View {
+        VStack(spacing: 0) {
+            ForEach(appState.calendarManager.upcomingEvents) { event in
+                Button {
+                    toggleSelection(event)
+                } label: {
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(event.isHappeningNow ? Color.red : Color.blue)
+                            .frame(width: 6, height: 6)
+
+                        Text(event.title)
+                            .font(.subheadline)
+                            .lineLimit(1)
+
+                        Spacer()
+
                         Text(formatTimeRange(event))
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        if !event.attendees.isEmpty {
-                            Text("\(event.attendees.count) attendee\(event.attendees.count == 1 ? "" : "s")")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+
+                        Image(systemName: isSelected(event) ? "checkmark.circle.fill" : "checkmark.circle")
+                            .foregroundStyle(isSelected(event) ? .blue : .secondary)
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
                 }
-
-                Spacer()
-
-                Image(systemName: isSelected(event) ? "checkmark.circle.fill" : "checkmark.circle")
-                    .foregroundStyle(isSelected(event) ? .blue : .secondary)
-                    .imageScale(.large)
+                .buttonStyle(.plain)
             }
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
     }
 
-    private func eventRow(_ event: CalendarManager.CalendarEvent) -> some View {
-        Button {
-            toggleSelection(event)
-        } label: {
-            HStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(event.title)
-                        .font(.subheadline)
-                        .lineLimit(1)
-                    Text(formatTimeRange(event))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+    // MARK: - Access Denied Banner
 
-                Spacer()
-
-                Image(systemName: isSelected(event) ? "checkmark.circle.fill" : "checkmark.circle")
-                    .foregroundStyle(isSelected(event) ? .blue : .secondary)
+    private var accessDeniedBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .imageScale(.small)
+            Text("Calendar access required")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button("Grant") {
+                appState.calendarManager.openCalendarSettings()
             }
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .font(.caption)
+            .foregroundStyle(.blue)
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
+
+    // MARK: - Helpers
 
     private func isSelected(_ event: CalendarManager.CalendarEvent) -> Bool {
         appState.selectedCalendarEvent?.id == event.id
