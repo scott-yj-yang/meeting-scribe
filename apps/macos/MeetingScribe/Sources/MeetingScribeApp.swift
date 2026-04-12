@@ -6,8 +6,7 @@ struct MeetingScribeApp: App {
     @Environment(\.openWindow) private var openWindow
 
     init() {
-        if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "png"),
-           let icon = NSImage(contentsOf: iconURL) {
+        if let icon = Bundle.module.image(forResource: "AppIcon") {
             NSApp.applicationIconImage = icon
         }
     }
