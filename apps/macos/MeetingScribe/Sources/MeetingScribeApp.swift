@@ -5,18 +5,13 @@ struct MeetingScribeApp: App {
     @StateObject private var appState = AppState()
     @Environment(\.openWindow) private var openWindow
 
-    init() {
-        if let icon = Bundle.module.image(forResource: "AppIcon") {
-            NSApp.applicationIconImage = icon
-        }
-    }
-
     var body: some Scene {
         // Main dashboard window
         Window("MeetingScribe Dashboard", id: "dashboard") {
             NativeDashboard()
                 .frame(minWidth: 900, minHeight: 600)
                 .environmentObject(appState)
+                .onAppear { Self.setAppIcon() }
         }
         .defaultSize(width: 1200, height: 800)
 
@@ -46,6 +41,15 @@ struct MeetingScribeApp: App {
                     .tabItem { Label("Notion", systemImage: "square.and.arrow.up.on.square") }
             }
             .frame(width: 560, height: 420)
+        }
+    }
+
+    private static func setAppIcon() {
+        let bundleName = "MeetingScribe_MeetingScribe"
+        if let bundleURL = Bundle.main.url(forResource: bundleName, withExtension: "bundle"),
+           let resourceBundle = Bundle(url: bundleURL),
+           let icon = resourceBundle.image(forResource: "AppIcon") {
+            NSApp.applicationIconImage = icon
         }
     }
 }
