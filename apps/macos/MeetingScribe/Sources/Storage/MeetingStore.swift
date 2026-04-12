@@ -77,6 +77,13 @@ class MeetingStore: ObservableObject {
         meetings.removeAll { $0.id == meeting.id }
     }
 
+    func rename(_ meeting: LocalMeeting, to newTitle: String) {
+        guard !newTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        var updated = meeting
+        updated.title = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        save(updated)
+    }
+
     func saveNotes(_ meeting: LocalMeeting, notes: String) {
         guard let dir = meeting.directoryURL else { return }
         let notesURL = dir.appendingPathComponent("notes.md")
