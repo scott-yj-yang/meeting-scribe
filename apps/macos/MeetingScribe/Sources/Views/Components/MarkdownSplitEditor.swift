@@ -73,7 +73,7 @@ struct MarkdownSplitEditor: View {
     private var preview: some View {
         ScrollView {
             Markdown(text.isEmpty ? "_(empty)_" : text)
-                .markdownTheme(.gitHub)
+                .markdownTheme(.dashboard)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)

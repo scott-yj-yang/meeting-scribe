@@ -63,7 +63,7 @@ struct NativeTranscriptView: View {
                                             .font(.system(.caption, weight: .semibold))
                                     }
                                     Markdown(seg.text)
-                                        .markdownTheme(.gitHub)
+                                        .markdownTheme(.dashboard)
                                         .textSelection(.enabled)
                                 }
                             }

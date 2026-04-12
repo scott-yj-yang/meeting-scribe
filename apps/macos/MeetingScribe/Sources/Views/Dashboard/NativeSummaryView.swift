@@ -49,7 +49,7 @@ struct NativeSummaryView: View {
                     .padding(.horizontal)
                     ScrollView {
                         Markdown(streamStore.text.isEmpty ? "_Waiting for first tokens…_" : streamStore.text)
-                            .markdownTheme(.gitHub)
+                            .markdownTheme(.dashboard)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding()
                     }
