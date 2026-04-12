@@ -3,14 +3,41 @@ import SwiftUI
 struct NativeDashboard: View {
     @EnvironmentObject var appState: AppState
     @State private var selectedMeeting: LocalMeeting?
+    @State private var searchText = ""
+    @State private var selectedType: String?
 
     var body: some View {
         VStack(spacing: 0) {
             NavigationSplitView {
-                MeetingListSidebar(
-                    meetings: appState.meetingStore.meetings,
-                    selection: $selectedMeeting
-                )
+                List(selection: $selectedMeeting) {
+                    DashboardCalendarSection()
+
+                    MeetingListContent(
+                        meetings: appState.meetingStore.meetings,
+                        searchText: searchText,
+                        selectedType: selectedType,
+                        onDelete: { meeting in
+                            appState.meetingStore.delete(meeting)
+                            if selectedMeeting?.id == meeting.id {
+                                selectedMeeting = nil
+                            }
+                        }
+                    )
+                }
+                .searchable(text: $searchText, prompt: "Search meetings")
+                .toolbar {
+                    ToolbarItem(placement: .automatic) {
+                        Menu {
+                            Button("All") { selectedType = nil }
+                            Divider()
+                            ForEach(["1:1", "Subgroup", "Lab Meeting", "Standup", "Casual"], id: \.self) { type in
+                                Button(type) { selectedType = type.lowercased() }
+                            }
+                        } label: {
+                            Image(systemName: selectedType != nil ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                        }
+                    }
+                }
                 .navigationTitle("Meetings")
                 .frame(minWidth: 250)
             } detail: {
@@ -36,6 +63,7 @@ struct NativeDashboard: View {
         }
         .onAppear {
             appState.meetingStore.loadAll()
+            Task { await appState.calendarManager.fetchCurrentAndUpcoming() }
         }
     }
 }

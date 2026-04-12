@@ -1,10 +1,12 @@
 import SwiftUI
 
-struct MeetingListSidebar: View {
+// MARK: - Embeddable content (no enclosing List)
+
+struct MeetingListContent: View {
     let meetings: [LocalMeeting]
-    @Binding var selection: LocalMeeting?
-    @State private var searchText = ""
-    @State private var selectedType: String?
+    var searchText: String = ""
+    var selectedType: String? = nil
+    var onDelete: ((LocalMeeting) -> Void)? = nil
 
     private var filtered: [LocalMeeting] {
         var result = meetings
@@ -35,15 +37,53 @@ struct MeetingListSidebar: View {
     }
 
     var body: some View {
-        List(selection: $selection) {
-            ForEach(grouped, id: \.0) { group, meetings in
-                Section(group) {
-                    ForEach(meetings) { meeting in
-                        MeetingRow(meeting: meeting)
-                            .tag(meeting)
-                    }
+        ForEach(grouped, id: \.0) { group, meetings in
+            Section(group) {
+                ForEach(meetings) { meeting in
+                    MeetingRow(meeting: meeting)
+                        .tag(meeting)
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                onDelete?(meeting)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                            if let dirURL = meeting.directoryURL {
+                                Button {
+                                    NSWorkspace.shared.activateFileViewerSelecting([dirURL])
+                                } label: {
+                                    Label("Show in Finder", systemImage: "folder")
+                                }
+                            }
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                onDelete?(meeting)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
                 }
             }
+        }
+    }
+}
+
+// MARK: - Standalone sidebar (backward compat)
+
+struct MeetingListSidebar: View {
+    let meetings: [LocalMeeting]
+    @Binding var selection: LocalMeeting?
+    @State private var searchText = ""
+    @State private var selectedType: String?
+
+    var body: some View {
+        List(selection: $selection) {
+            MeetingListContent(
+                meetings: meetings,
+                searchText: searchText,
+                selectedType: selectedType
+            )
         }
         .searchable(text: $searchText, prompt: "Search meetings")
         .toolbar {

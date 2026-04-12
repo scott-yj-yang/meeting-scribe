@@ -3,10 +3,12 @@ import SwiftUI
 struct MeetingDetailView: View {
     let meeting: LocalMeeting
     let meetingStore: MeetingStore
+    @EnvironmentObject var appState: AppState
     @State private var selectedTab = 0
     @StateObject private var notionSettings = NotionSettings()
     @State private var exporting = false
     @State private var exportStatus: String?
+    @State private var showDeleteConfirm = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -94,6 +96,22 @@ struct MeetingDetailView: View {
                 .disabled(exporting || notionSettings.token.isEmpty || notionSettings.databaseId.isEmpty)
                 .help(notionSettings.token.isEmpty ? "Configure Notion in Settings (Cmd-,)" : "Export this meeting to Notion")
             }
+            ToolbarItem(placement: .destructiveAction) {
+                Button {
+                    showDeleteConfirm = true
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                .help("Delete this meeting")
+            }
+        }
+        .alert("Delete this meeting?", isPresented: $showDeleteConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                appState.meetingStore.delete(meeting)
+            }
+        } message: {
+            Text("This will permanently remove \"\(meeting.title)\" and all its files (audio, transcript, summary, notes).")
         }
         .overlay(alignment: .bottom) {
             if let status = exportStatus {
