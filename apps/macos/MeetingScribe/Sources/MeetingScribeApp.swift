@@ -5,6 +5,13 @@ struct MeetingScribeApp: App {
     @StateObject private var appState = AppState()
     @Environment(\.openWindow) private var openWindow
 
+    init() {
+        if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "png"),
+           let icon = NSImage(contentsOf: iconURL) {
+            NSApp.applicationIconImage = icon
+        }
+    }
+
     var body: some Scene {
         // Main dashboard window
         Window("MeetingScribe Dashboard", id: "dashboard") {

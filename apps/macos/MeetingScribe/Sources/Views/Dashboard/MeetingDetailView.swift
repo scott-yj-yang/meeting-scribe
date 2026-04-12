@@ -40,6 +40,65 @@ struct MeetingDetailView: View {
                         .font(.caption)
                         .foregroundStyle(.blue)
                 }
+
+                HStack(spacing: 8) {
+                    if notionSettings.token.isEmpty || notionSettings.databaseId.isEmpty {
+                        Button {
+                            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                        } label: {
+                            Label("Set up Notion export", systemImage: "square.and.arrow.up")
+                                .font(.caption)
+                                .imageScale(.small)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.blue)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.blue.opacity(0.08))
+                        .cornerRadius(6)
+                    } else {
+                        Button {
+                            Task { await exportToNotion() }
+                        } label: {
+                            if exporting {
+                                HStack(spacing: 4) {
+                                    ProgressView().controlSize(.mini)
+                                    Text("Exporting...")
+                                        .font(.caption)
+                                }
+                            } else {
+                                Label("Export to Notion", systemImage: "square.and.arrow.up")
+                                    .font(.caption)
+                                    .imageScale(.small)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.blue)
+                        .cornerRadius(6)
+                        .disabled(exporting)
+                    }
+
+                    Button {
+                        if let url = meeting.directoryURL {
+                            NSWorkspace.shared.open(url)
+                        }
+                    } label: {
+                        Label("Open folder", systemImage: "folder")
+                            .font(.caption)
+                            .imageScale(.small)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(6)
+
+                    Spacer()
+                }
             }
             .padding(.horizontal, 20)
             .padding(.top, 16)
