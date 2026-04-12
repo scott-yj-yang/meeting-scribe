@@ -43,9 +43,7 @@ struct MeetingDetailView: View {
 
                 HStack(spacing: 8) {
                     if notionSettings.token.isEmpty || notionSettings.databaseId.isEmpty {
-                        Button {
-                            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                        } label: {
+                        SettingsLink {
                             Label("Set up Notion export", systemImage: "square.and.arrow.up")
                                 .font(.caption)
                                 .imageScale(.small)
