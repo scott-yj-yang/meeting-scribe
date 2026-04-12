@@ -5,15 +5,14 @@ import SwiftUI
 struct RecordingPill: View {
     @EnvironmentObject var appState: AppState
 
+    @State private var isHovered = false
+
     var body: some View {
         HStack(spacing: 12) {
-            Button(action: { appState.toggleRecording() }) {
-                Image(systemName: appState.isRecording ? "stop.circle.fill" : "mic.circle.fill")
-                    .font(.system(size: 28))
-                    .foregroundStyle(appState.isRecording ? .red : .blue)
-                    .symbolEffect(.pulse, isActive: appState.isRecording)
-            }
-            .buttonStyle(.plain)
+            Image(systemName: appState.isRecording ? "stop.circle.fill" : "mic.circle.fill")
+                .font(.system(size: 28))
+                .foregroundStyle(appState.isRecording ? .red : .blue)
+                .symbolEffect(.pulse, isActive: appState.isRecording)
 
             if appState.isRecording {
                 WaveformBars(level: appState.audioLevel, tint: .red)
@@ -38,6 +37,20 @@ struct RecordingPill: View {
             RoundedRectangle(cornerRadius: 30)
                 .stroke(Color.gray.opacity(0.15), lineWidth: 1)
         )
+        .contentShape(Capsule())
+        .onTapGesture {
+            appState.toggleRecording()
+        }
+        .onHover { hovering in
+            isHovered = hovering
+            if hovering {
+                NSCursor.pointingHand.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
+        .scaleEffect(isHovered ? 1.03 : 1.0)
+        .animation(.easeInOut(duration: 0.15), value: isHovered)
     }
 
     private func formatDuration(_ t: TimeInterval) -> String {
