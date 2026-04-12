@@ -9,14 +9,19 @@ struct MeetingDetailView: View {
     @State private var exporting = false
     @State private var exportStatus: String?
     @State private var showDeleteConfirm = false
+    @State private var editableTitle: String = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
             VStack(alignment: .leading, spacing: 6) {
-                Text(meeting.title)
-                    .font(.system(.title, design: .rounded, weight: .bold))
-                    .textSelection(.enabled)
+                TextField("Untitled meeting", text: $editableTitle, onCommit: {
+                    if editableTitle != meeting.title {
+                        meetingStore.rename(meeting, to: editableTitle)
+                    }
+                })
+                .font(.system(.title, design: .rounded, weight: .bold))
+                .textFieldStyle(.plain)
 
                 HStack(spacing: 12) {
                     Label(meeting.date.formatted(.dateTime.weekday(.wide).month().day().year()),
@@ -179,6 +184,12 @@ struct MeetingDetailView: View {
                     .cornerRadius(8)
                     .padding()
             }
+        }
+        .onAppear {
+            editableTitle = meeting.title
+        }
+        .onChange(of: meeting.id) { _, _ in
+            editableTitle = meeting.title
         }
     }
 
