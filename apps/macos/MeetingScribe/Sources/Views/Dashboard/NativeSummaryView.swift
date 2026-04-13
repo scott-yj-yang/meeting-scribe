@@ -222,8 +222,24 @@ struct NativeSummaryView: View {
             provider = OllamaProvider(endpoint: endpoint, model: model)
         }
 
-        // Chunking for long transcripts
-        let chunks = TranscriptChunker.chunk(transcript, maxTokens: 3000, overlap: 100)
+        // Claude CLI has a 200K+ token context window — send the entire
+        // transcript in a single pass. Chunking would actively hurt quality:
+        // each chunk loses the full meeting context, speaker attribution
+        // gets fragmented across boundaries, and the final "synthesize
+        // summaries of summaries" pass is lossy on top of lossy. Only chunk
+        // for local providers (Ollama) where context windows are smaller.
+        if kind == .claudeCLI {
+            return try await provider.summarize(transcript: transcript, template: template, onToken: onToken)
+        }
+
+        // Ollama: chunk long transcripts to fit local models' smaller contexts.
+        // The threshold is user-configurable via LLMSettings.ollamaMaxContextTokens,
+        // read directly from UserDefaults here because this method is nonisolated
+        // and can't touch @StateObject. Int.max = "never chunk" (large-context
+        // models like Llama 3.1 70B 128K).
+        let storedMaxTokens = UserDefaults.standard.integer(forKey: "ollamaMaxContextTokens")
+        let maxTokens = storedMaxTokens > 0 ? storedMaxTokens : 3000
+        let chunks = TranscriptChunker.chunk(transcript, maxTokens: maxTokens, overlap: 100)
         if chunks.count == 1 {
             return try await provider.summarize(transcript: transcript, template: template, onToken: onToken)
         }
