@@ -138,7 +138,7 @@ struct RecordingModeView: View {
     private var postRecordingPhase: some View {
         VStack(spacing: 20) {
             if appState.isTranscribing {
-                transcribingView
+                transcribingCard
             } else {
                 completedView
             }
@@ -146,41 +146,98 @@ struct RecordingModeView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var transcribingView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "waveform")
-                .font(.system(size: 40))
-                .foregroundStyle(.blue)
-                .symbolEffect(.variableColor.iterative, options: .repeating)
-
-            Text("Transcribing...")
-                .font(.title2)
-                .fontWeight(.semibold)
-
+    private var transcribingCard: some View {
+        VStack(spacing: 20) {
+            // Stage indicator
             VStack(spacing: 8) {
+                Image(systemName: "waveform")
+                    .font(.system(size: 36, weight: .light))
+                    .foregroundStyle(.blue)
+                    .symbolEffect(.variableColor.iterative, options: .repeating)
+                Text(stageLabel)
+                    .font(.system(.title3, design: .rounded, weight: .medium))
+                Text(stageSubtitle)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 380)
+            }
+
+            // Progress bar
+            VStack(spacing: 6) {
                 ProgressView(value: appState.transcriptionProgress, total: 1.0)
                     .progressViewStyle(.linear)
-
+                    .frame(maxWidth: 420)
                 HStack {
                     Text("\(Int(appState.transcriptionProgress * 100))%")
-                        .font(.subheadline)
+                        .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
-
                     Spacer()
+                    Text(stableETA)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .contentTransition(.numericText())
+                }
+                .frame(maxWidth: 420)
+            }
 
-                    if let eta = appState.transcriptionETA {
-                        Text("ETA: \(eta)")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+            // Snippet reveal
+            if let snippet = appState.lastTranscriptSnippet, !snippet.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("First sentences", systemImage: "text.quote")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(snippet)
+                        .font(.system(.body, design: .serif))
+                        .lineLimit(4)
+                        .frame(maxWidth: 520, alignment: .leading)
+                        .padding(12)
+                        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+                }
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            } else if appState.isTranscribing {
+                // Skeleton placeholder so the user knows text is coming
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(0..<3) { i in
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.primary.opacity(0.06))
+                            .frame(height: 10)
+                            .frame(maxWidth: i == 2 ? 280 : .infinity)
                     }
                 }
-            }
-            .frame(maxWidth: 350)
-
-            if let snippet = appState.lastTranscriptSnippet {
-                snippetPreview(snippet)
+                .frame(maxWidth: 520)
+                .padding(12)
+                .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 10))
             }
         }
+        .padding(32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(.easeInOut(duration: 0.3), value: appState.transcriptionProgress)
+        .animation(.easeInOut(duration: 0.3), value: appState.lastTranscriptSnippet)
+    }
+
+    private var stageLabel: String {
+        switch appState.transcriptionProgress {
+        case 0..<0.05: return "Preparing audio"
+        case 0.05..<0.95: return "Transcribing with Whisper"
+        default: return "Finalizing"
+        }
+    }
+
+    private var stageSubtitle: String {
+        switch appState.transcriptionProgress {
+        case 0..<0.05: return "Loading audio and checking format..."
+        case 0.05..<0.95: return "This runs locally on your Mac — no audio leaves the device."
+        default: return "Wrapping up and saving transcript..."
+        }
+    }
+
+    private var stableETA: String {
+        if let eta = appState.transcriptionETA, !eta.isEmpty {
+            return eta
+        }
+        if appState.transcriptionProgress < 0.05 { return "estimating..." }
+        return "almost done"
     }
 
     private var completedView: some View {
@@ -296,16 +353,6 @@ struct RecordingModeView: View {
         }
         .frame(maxWidth: 500, minHeight: 100, maxHeight: 200)
         .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
-    }
-
-    private func snippetPreview(_ text: String) -> some View {
-        Text(text)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(4)
-            .frame(maxWidth: 400, alignment: .leading)
-            .padding(12)
-            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
     }
 
     // MARK: - Helpers
