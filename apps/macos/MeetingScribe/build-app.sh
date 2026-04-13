@@ -3,6 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 CONFIG="${1:-debug}"
+swift package clean
 swift build --configuration "$CONFIG"
 
 BIN_DIR="$(swift build --configuration "$CONFIG" --show-bin-path)"
