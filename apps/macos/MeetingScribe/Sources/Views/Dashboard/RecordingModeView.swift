@@ -31,10 +31,9 @@ struct RecordingModeView: View {
             Spacer()
 
             VStack(spacing: 24) {
-                // Calendar event suggestion
-                if let event = appState.calendarManager.suggestedEvent {
-                    calendarSuggestionRow(event)
-                }
+                // Calendar event picker
+                CalendarPickerSection()
+                    .padding(.horizontal, 24)
 
                 // Meeting type pills
                 meetingTypePills
@@ -260,48 +259,6 @@ struct RecordingModeView: View {
 
     // MARK: - Shared Components
 
-    private func calendarSuggestionRow(_ event: CalendarManager.CalendarEvent) -> some View {
-        let isSelected = appState.selectedCalendarEvent?.id == event.id
-
-        return Button {
-            if isSelected {
-                appState.selectedCalendarEvent = nil
-                appState.meetingTitle = ""
-            } else {
-                appState.selectedCalendarEvent = event
-                appState.meetingTitle = event.title
-            }
-        } label: {
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(event.isHappeningNow ? Color.red : Color.blue)
-                    .frame(width: 8, height: 8)
-
-                Text(event.isHappeningNow ? "Now" : "Up next")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(event.isHappeningNow ? .red : .blue)
-
-                Text(event.title)
-                    .font(.subheadline)
-                    .lineLimit(1)
-
-                Spacer()
-
-                Text(formatTimeRange(event))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "checkmark.circle")
-                    .foregroundStyle(isSelected ? .blue : .secondary)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
     private var meetingTypePills: some View {
         HStack(spacing: 6) {
             ForEach(meetingTypes, id: \.self) { type in
@@ -368,9 +325,176 @@ struct RecordingModeView: View {
         return String(format: "%d:%02d", m, s)
     }
 
-    private func formatTimeRange(_ event: CalendarManager.CalendarEvent) -> String {
-        let start = event.startDate.formatted(.dateTime.hour().minute())
-        let end = event.endDate.formatted(.dateTime.hour().minute())
-        return "\(start) - \(end)"
+}
+
+// MARK: - Calendar Picker Section
+
+private struct CalendarPickerSection: View {
+    @EnvironmentObject var appState: AppState
+
+    private var nowEvents: [CalendarManager.CalendarEvent] {
+        var all: [CalendarManager.CalendarEvent] = []
+        if let current = appState.calendarManager.currentEvent {
+            all.append(current)
+        }
+        // Include any other upcoming events that already started (isHappeningNow)
+        all.append(contentsOf: appState.calendarManager.upcomingEvents.filter { $0.isHappeningNow })
+        return dedupe(all)
+    }
+
+    private var upcomingEvents: [CalendarManager.CalendarEvent] {
+        let upcoming = appState.calendarManager.upcomingEvents.filter { !$0.isHappeningNow }
+        return Array(dedupe(upcoming).prefix(5))
+    }
+
+    private func dedupe(_ events: [CalendarManager.CalendarEvent]) -> [CalendarManager.CalendarEvent] {
+        var seen = Set<String>()
+        return events.filter { evt in
+            let key = "\(evt.title)|\(evt.startDate.timeIntervalSince1970)"
+            return seen.insert(key).inserted
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if !nowEvents.isEmpty || !upcomingEvents.isEmpty {
+                HStack {
+                    Label("Calendar", systemImage: "calendar")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button {
+                        Task { await appState.calendarManager.fetchCurrentAndUpcoming() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 11))
+                            .iconHitTarget(.compact)
+                    }
+                    .buttonStyle(.plain)
+                    .clickableHover()
+                    .help("Refresh calendar events")
+                }
+
+                if !nowEvents.isEmpty {
+                    VStack(spacing: 6) {
+                        ForEach(nowEvents, id: \.id) { event in
+                            eventRow(event, label: "Now", labelColor: .red)
+                        }
+                    }
+                }
+
+                if !upcomingEvents.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if !nowEvents.isEmpty {
+                            Text("Upcoming")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                                .padding(.top, 4)
+                        }
+                        VStack(spacing: 6) {
+                            ForEach(upcomingEvents, id: \.id) { event in
+                                eventRow(event, label: timeLabel(for: event), labelColor: .blue)
+                            }
+                        }
+                    }
+                }
+
+                Button {
+                    appState.selectedCalendarEvent = nil
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: appState.selectedCalendarEvent == nil ? "circle.fill" : "circle")
+                            .foregroundStyle(appState.selectedCalendarEvent == nil ? .blue : .secondary)
+                        Text("No calendar event")
+                            .foregroundStyle(.primary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .clickableHover()
+            } else {
+                HStack(spacing: 8) {
+                    Image(systemName: "calendar.badge.exclamationmark")
+                        .foregroundStyle(.secondary)
+                    Text("No events on your calendar today.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func eventRow(_ event: CalendarManager.CalendarEvent, label: String, labelColor: Color) -> some View {
+        let isSelected = appState.selectedCalendarEvent?.id == event.id
+        Button {
+            if isSelected {
+                appState.selectedCalendarEvent = nil
+            } else {
+                appState.selectedCalendarEvent = event
+                if appState.meetingTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    appState.meetingTitle = event.title
+                }
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? .blue : .secondary)
+                    .font(.system(size: 16))
+
+                Text(label)
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(labelColor, in: Capsule())
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(event.title)
+                        .font(.callout.weight(.medium))
+                        .lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text(rangeLabel(for: event))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if !event.attendees.isEmpty {
+                            Text("· \(event.attendees.count) attendees")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isSelected ? Color.blue.opacity(0.12) : Color.primary.opacity(0.04))
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .clickableHover()
+    }
+
+    private func rangeLabel(for event: CalendarManager.CalendarEvent) -> String {
+        let fmt = Date.FormatStyle.dateTime.hour().minute()
+        return "\(event.startDate.formatted(fmt)) – \(event.endDate.formatted(fmt))"
+    }
+
+    private func timeLabel(for event: CalendarManager.CalendarEvent) -> String {
+        let minutes = Int(event.startDate.timeIntervalSinceNow / 60)
+        if minutes < 60 { return "in \(max(minutes, 0))m" }
+        let hours = minutes / 60
+        return "in \(hours)h"
     }
 }
