@@ -36,6 +36,24 @@ final class OllamaProvider: LLMProvider {
         return parsed.models.map { OllamaModel(name: $0.name, size: $0.size) }
     }
 
+    /// Lightweight health check. Returns true if the Ollama daemon answers
+    /// /api/tags within 2 seconds. Never throws — returns false for any failure.
+    func isHealthy() async -> Bool {
+        guard let url = URL(string: "\(endpoint)/api/tags") else {
+            return false
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 2.0
+        do {
+            let (_, response) = try await urlSession.data(for: request)
+            guard let http = response as? HTTPURLResponse else { return false }
+            return http.statusCode == 200
+        } catch {
+            return false
+        }
+    }
+
     /// POST {endpoint}/v1/chat/completions with stream: true — parse SSE "data: {...}" lines.
     func summarize(
         transcript: String,
