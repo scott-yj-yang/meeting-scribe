@@ -68,11 +68,60 @@ final class ClaudeCLIProvider: LLMProvider, @unchecked Sendable {
         return fullText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private func serializeMessagesToPrompt(_ messages: [ChatMessage]) -> String {
+        // Claude CLI expects plain-text prompt. Serialize role-labeled blocks so the model
+        // can distinguish system context, prior user turns, and its own prior responses.
+        var out = ""
+        for msg in messages {
+            switch msg.role {
+            case .system:
+                out += "[Context — do not repeat]\n\(msg.text)\n\n"
+            case .user:
+                out += "Human: \(msg.text)\n\n"
+            case .assistant:
+                out += "Assistant: \(msg.text)\n\n"
+            }
+        }
+        // Leave the final turn open so Claude continues as the assistant
+        out += "Assistant:"
+        return out
+    }
+
     func chat(
         messages: [ChatMessage],
         onToken: @escaping @Sendable (String) -> Void
     ) async throws -> String {
-        throw NSError(domain: "MeetingScribe", code: -1, userInfo: [NSLocalizedDescriptionKey: "chat(messages:) not implemented yet"])
+        let prompt = serializeMessagesToPrompt(messages)
+
+        let homeDir = NSHomeDirectory()
+        let claudePaths = ["/opt/homebrew/bin/claude", "/usr/local/bin/claude", "\(homeDir)/.local/bin/claude"]
+        guard let claudePath = claudePaths.first(where: { FileManager.default.fileExists(atPath: $0) }) else {
+            throw NSError(domain: "Claude", code: 0, userInfo: [NSLocalizedDescriptionKey: "Claude CLI not installed"])
+        }
+
+        let p = Process()
+        setProcess(p)
+        p.executableURL = URL(fileURLWithPath: claudePath)
+        p.arguments = ["-p", prompt]
+        let stdout = Pipe()
+        p.standardOutput = stdout
+        p.standardError = FileHandle.nullDevice
+
+        try p.run()
+
+        var fullText = ""
+        for try await line in stdout.fileHandleForReading.bytes.lines {
+            let chunk = line + "\n"
+            fullText += chunk
+            onToken(chunk)
+        }
+        await Task.detached { p.waitUntilExit() }.value
+        setProcess(nil)
+
+        if p.terminationStatus != 0 && fullText.isEmpty {
+            throw NSError(domain: "Claude", code: Int(p.terminationStatus), userInfo: [NSLocalizedDescriptionKey: "Claude exited with status \(p.terminationStatus)"])
+        }
+        return fullText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func cancel() {
