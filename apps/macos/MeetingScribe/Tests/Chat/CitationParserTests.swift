@@ -33,7 +33,7 @@ struct CitationParserTests {
         }
         #expect(token.minutes == 2)
         #expect(token.seconds == 15)
-        #expect(token.timeInterval == 135)
+        #expect(token.timeInterval == 135.0)
         #expect(token.displayString == "02:15")
 
         guard case .text(let b) = segments[2] else {
@@ -73,6 +73,6 @@ struct CitationParserTests {
             if case .citation(let t) = seg { found = t }
         }
         #expect(found?.minutes == 125)
-        #expect(found?.timeInterval == 125 * 60 + 30)
+        #expect(found?.timeInterval == TimeInterval(125 * 60 + 30))
     }
 }

@@ -4,12 +4,8 @@ struct CitationToken: Hashable, Sendable {
     let minutes: Int
     let seconds: Int
 
-    // Returns the timestamp as a whole number of seconds. Using Int rather than
-    // TimeInterval (Double) keeps the type consistent for #expect comparisons when
-    // accessed through optional chaining (Optional<Int> == Int via Optional.== ).
-    // Callers that need TimeInterval for AVFoundation can write TimeInterval(token.timeInterval).
-    var timeInterval: Int {
-        minutes * 60 + seconds
+    var timeInterval: TimeInterval {
+        TimeInterval(minutes * 60 + seconds)
     }
 
     var displayString: String {
