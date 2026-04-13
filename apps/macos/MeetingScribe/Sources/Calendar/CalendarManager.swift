@@ -62,7 +62,7 @@ class CalendarManager: ObservableObject {
         var seen = Set<String>()
         let ekEvents = store.events(matching: predicate)
             .filter { !$0.isAllDay }
-            .sorted { $0.startDate > $1.startDate }
+            .sorted { $0.startDate < $1.startDate }
             .filter { event in
                 let key = "\(event.title ?? "")_\(event.startDate.timeIntervalSince1970)"
                 if seen.contains(key) { return false }
