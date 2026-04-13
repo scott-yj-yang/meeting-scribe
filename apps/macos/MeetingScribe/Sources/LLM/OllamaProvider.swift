@@ -89,7 +89,40 @@ final class OllamaProvider: LLMProvider {
         messages: [ChatMessage],
         onToken: @escaping @Sendable (String) -> Void
     ) async throws -> String {
-        throw NSError(domain: "MeetingScribe", code: -1, userInfo: [NSLocalizedDescriptionKey: "chat(messages:) not implemented yet"])
+        guard let url = URL(string: "\(endpoint)/v1/chat/completions") else {
+            throw NSError(domain: "Ollama", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid endpoint"])
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = [
+            "model": model,
+            "messages": messages.map { ["role": $0.role.rawValue, "content": $0.text] },
+            "stream": true,
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (bytes, response) = try await urlSession.bytes(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw NSError(domain: "Ollama", code: 2, userInfo: [NSLocalizedDescriptionKey: "Ollama chat request failed"])
+        }
+
+        var fullText = ""
+        for try await line in bytes.lines {
+            guard line.hasPrefix("data: ") else { continue }
+            let payload = String(line.dropFirst(6))
+            if payload == "[DONE]" { break }
+            guard let data = payload.data(using: .utf8) else { continue }
+            if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let choices = obj["choices"] as? [[String: Any]],
+               let first = choices.first,
+               let delta = first["delta"] as? [String: Any],
+               let content = delta["content"] as? String {
+                fullText += content
+                onToken(content)
+            }
+        }
+        return fullText
     }
 
     private func loadTemplate(_ name: String) throws -> String {
