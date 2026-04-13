@@ -34,5 +34,25 @@
     <string>MeetingScribe runs on-device speech recognition for the live preview.</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
+    <!--
+      App Transport Security exception.
+      MeetingScribe talks to user-configured LLM endpoints:
+      - Claude CLI is a subprocess, not a URLSession call (not affected by ATS)
+      - Ollama runs as plain HTTP on localhost, LAN private ranges
+        (192.168.x, 10.x, 172.16-31.x), CGNAT/Tailscale (100.64.0.0/10),
+        or any user-specified host.
+      NSAllowsLocalNetworking alone is insufficient because it only exempts
+      .local mDNS and unqualified hostnames, not IP literals on private or
+      CGNAT ranges. Enable NSAllowsArbitraryLoads because the network surface
+      is strictly bounded by user-configured endpoints — there are no
+      third-party HTTP calls in the app.
+    -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
 </dict>
 </plist>
