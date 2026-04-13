@@ -11,7 +11,103 @@ struct MeetingDetailView: View {
     @State private var showDeleteConfirm = false
     @State private var editableTitle: String = ""
 
+    // MARK: - Chat state
+    @State private var showChatPanel: Bool = false
+    @StateObject private var chatViewModel = MeetingChatViewModel()
+    @State private var transcriptScrollTarget: TimeInterval? = nil
+    @StateObject private var llmSettings = LLMSettings()
+
     var body: some View {
+        HStack(spacing: 0) {
+            mainContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if showChatPanel {
+                Divider()
+                MeetingChatPanel(
+                    viewModel: chatViewModel,
+                    presetMode: .postMeeting,
+                    onCitationTap: { token in
+                        transcriptScrollTarget = token.timeInterval
+                    }
+                )
+                .frame(width: 380)
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Button {
+                    let wasOpen = showChatPanel
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        showChatPanel.toggle()
+                    }
+                    if !wasOpen {
+                        loadChatSession()
+                    }
+                } label: {
+                    Image(systemName: showChatPanel ? "bubble.left.and.bubble.right.fill" : "bubble.left.and.bubble.right")
+                        .font(.system(size: 16, weight: .medium))
+                        .iconHitTarget(.compact)
+                }
+                .buttonStyle(.plain)
+                .clickableHover()
+                .help(showChatPanel ? "Hide chat" : "Ask about this meeting")
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    Task { await exportToNotion() }
+                } label: {
+                    if exporting {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Label("Export to Notion", systemImage: "square.and.arrow.up")
+                    }
+                }
+                .disabled(exporting || notionSettings.token.isEmpty || notionSettings.databaseId.isEmpty)
+                .help(notionSettings.token.isEmpty ? "Configure Notion in Settings (Cmd-,)" : "Export this meeting to Notion")
+            }
+            ToolbarItem(placement: .destructiveAction) {
+                Button {
+                    showDeleteConfirm = true
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                .help("Delete this meeting")
+            }
+        }
+        .alert("Delete this meeting?", isPresented: $showDeleteConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                appState.meetingStore.delete(meeting)
+            }
+        } message: {
+            Text("This will permanently remove \"\(meeting.title)\" and all its files (audio, transcript, summary, notes).")
+        }
+        .overlay(alignment: .bottom) {
+            if let status = exportStatus {
+                Text(status)
+                    .font(.caption)
+                    .padding(8)
+                    .background(.regularMaterial)
+                    .cornerRadius(8)
+                    .padding()
+            }
+        }
+        .onAppear {
+            editableTitle = meeting.title
+        }
+        .onChange(of: meeting.id) { _, _ in
+            editableTitle = meeting.title
+            // Reset chat when switching meetings
+            showChatPanel = false
+        }
+    }
+
+    // MARK: - Main content (extracted so it can be wrapped in the HStack)
+
+    @ViewBuilder
+    private var mainContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
             VStack(alignment: .leading, spacing: 6) {
@@ -144,54 +240,69 @@ struct MeetingDetailView: View {
             }
             .frame(maxHeight: .infinity)
         }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    Task { await exportToNotion() }
-                } label: {
-                    if exporting {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Label("Export to Notion", systemImage: "square.and.arrow.up")
-                    }
-                }
-                .disabled(exporting || notionSettings.token.isEmpty || notionSettings.databaseId.isEmpty)
-                .help(notionSettings.token.isEmpty ? "Configure Notion in Settings (Cmd-,)" : "Export this meeting to Notion")
-            }
-            ToolbarItem(placement: .destructiveAction) {
-                Button {
-                    showDeleteConfirm = true
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
-                .help("Delete this meeting")
-            }
+    }
+
+    // MARK: - Chat session loading
+
+    private func loadChatSession() {
+        guard let dir = meeting.directoryURL else { return }
+
+        // Load persisted history
+        let store = ChatSessionStore()
+        do {
+            let session = try store.load(from: dir)
+            chatViewModel.loadExisting(session.messages)
+        } catch {
+            chatViewModel.loadExisting([])
         }
-        .alert("Delete this meeting?", isPresented: $showDeleteConfirm) {
-            Button("Cancel", role: .cancel) { }
-            Button("Delete", role: .destructive) {
-                appState.meetingStore.delete(meeting)
-            }
-        } message: {
-            Text("This will permanently remove \"\(meeting.title)\" and all its files (audio, transcript, summary, notes).")
+
+        // Capture meeting and dir by value so closures don't hold self
+        let capturedMeeting = meeting
+        let capturedDir = dir
+
+        chatViewModel.systemMessageProvider = {
+            let transcriptURL = capturedDir.appendingPathComponent("transcript.md")
+            let summaryURL = capturedDir.appendingPathComponent("summary.md")
+            let notesURL = capturedDir.appendingPathComponent("notes.md")
+
+            let transcript = (try? String(contentsOf: transcriptURL, encoding: .utf8)) ?? ""
+            let summary = try? String(contentsOf: summaryURL, encoding: .utf8)
+            let notes = try? String(contentsOf: notesURL, encoding: .utf8)
+
+            let context = MeetingContext(
+                title: capturedMeeting.title,
+                date: capturedMeeting.date,
+                durationSeconds: capturedMeeting.duration,
+                calendarEventTitle: capturedMeeting.calendarEventTitle,
+                notes: notes,
+                transcript: transcript,
+                summary: summary,
+                mode: .postMeeting
+            )
+            return MeetingContextBuilder.buildSystemMessage(context: context)
         }
-        .overlay(alignment: .bottom) {
-            if let status = exportStatus {
-                Text(status)
-                    .font(.caption)
-                    .padding(8)
-                    .background(.regularMaterial)
-                    .cornerRadius(8)
-                    .padding()
-            }
+
+        // Snapshot LLM settings on MainActor before entering the nonisolated closure
+        let kind = llmSettings.providerKind
+        let endpoint = llmSettings.ollamaEndpoint
+        let model = llmSettings.ollamaModel
+
+        chatViewModel.runChat = { messages, onToken in
+            let provider = LLMProviderFactory.make(
+                kind: kind,
+                ollamaEndpoint: endpoint,
+                ollamaModel: model
+            )
+            return try await provider.chat(messages: messages, onToken: onToken)
         }
-        .onAppear {
-            editableTitle = meeting.title
-        }
-        .onChange(of: meeting.id) { _, _ in
-            editableTitle = meeting.title
+
+        chatViewModel.onTurnComplete = { messages in
+            let session = ChatSession(messages: messages)
+            try? store.save(session, to: capturedDir)
         }
     }
+
+    // MARK: - Helpers
 
     private func exportToNotion() async {
         exporting = true
