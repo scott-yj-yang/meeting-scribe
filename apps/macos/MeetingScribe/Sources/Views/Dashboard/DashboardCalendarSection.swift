@@ -99,6 +99,7 @@ struct DashboardCalendarBanner: View {
                         Image(systemName: isSelected(event) ? "checkmark.circle.fill" : "checkmark.circle")
                             .font(.system(size: 16))
                             .foregroundStyle(isSelected(event) ? .blue : .secondary)
+                            .iconHitTarget(.compact)
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
