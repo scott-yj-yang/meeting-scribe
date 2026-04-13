@@ -62,6 +62,9 @@ class CalendarManager: ObservableObject {
         var seen = Set<String>()
         let ekEvents = store.events(matching: predicate)
             .filter { !$0.isAllDay }
+            // Drop events that have already ended — the picker should only
+            // surface events that are happening now or still in the future.
+            .filter { $0.endDate > now }
             .sorted { $0.startDate < $1.startDate }
             .filter { event in
                 let key = "\(event.title ?? "")_\(event.startDate.timeIntervalSince1970)"
