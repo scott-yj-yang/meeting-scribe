@@ -4,6 +4,8 @@ struct LLMSettingsView: View {
     @StateObject private var settings = LLMSettings()
     @State private var availableModels: [OllamaModel] = []
     @State private var statusMessage: String?
+    @State private var ollamaHealthy = false
+    @State private var checkingHealth = false
 
     var body: some View {
         Form {
@@ -49,6 +51,39 @@ struct LLMSettingsView: View {
                             .buttonStyle(.bordered)
                     }
 
+                    HStack(spacing: 8) {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(ollamaHealthy ? Color.green : Color.orange)
+                                .frame(width: 8, height: 8)
+                            Text(ollamaHealthy ? "Running" : "Not running")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        if !ollamaHealthy {
+                            Button {
+                                Task { await startServer() }
+                            } label: {
+                                if checkingHealth {
+                                    ProgressView().controlSize(.small)
+                                } else {
+                                    Text("Start server")
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .disabled(checkingHealth)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    .task {
+                        await refreshHealth()
+                    }
+                    .onChange(of: settings.ollamaEndpoint) { _, _ in
+                        Task { await refreshHealth() }
+                    }
+
                     if let msg = statusMessage {
                         Text(msg)
                             .font(.caption)
@@ -81,6 +116,27 @@ struct LLMSettingsView: View {
                 self.availableModels = []
                 self.statusMessage = "Error: \(error.localizedDescription)"
             }
+        }
+    }
+
+    private func refreshHealth() async {
+        let provider = OllamaProvider(endpoint: settings.ollamaEndpoint, model: settings.ollamaModel)
+        ollamaHealthy = await provider.isHealthy()
+    }
+
+    private func startServer() async {
+        checkingHealth = true
+        defer { checkingHealth = false }
+        do {
+            ollamaHealthy = try await OllamaServerManager.startIfNeeded(
+                endpoint: settings.ollamaEndpoint,
+                model: settings.ollamaModel
+            )
+            if ollamaHealthy {
+                await refreshModels()
+            }
+        } catch {
+            ollamaHealthy = false
         }
     }
 }

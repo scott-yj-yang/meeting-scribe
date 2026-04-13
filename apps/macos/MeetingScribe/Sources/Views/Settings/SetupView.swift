@@ -5,11 +5,13 @@ struct SetupView: View {
     @State private var whisperModelInstalled = false
     @State private var claudeInstalled = false
     @State private var ollamaInstalled = false
+    @State private var ollamaServerRunning = false
 
     @State private var installingWhisper = false
     @State private var installingModel = false
     @State private var installingClaude = false
     @State private var installingOllama = false
+    @State private var startingOllamaServer = false
 
     @State private var installLog = ""
     @State private var showLog = false
@@ -74,6 +76,24 @@ struct SetupView: View {
                     await runCommand("/opt/homebrew/bin/brew", arguments: ["install", "--cask", "ollama"])
                     refreshStatus()
                     installingOllama = false
+                    if ollamaInstalled {
+                        await startOllamaServer()
+                        refreshStatus()
+                    }
+                }
+
+                dependencyRow(
+                    name: "Ollama server",
+                    description: "Start the background daemon so the app can talk to Ollama.",
+                    installed: ollamaServerRunning,
+                    installing: startingOllamaServer
+                ) {
+                    startingOllamaServer = true
+                    await startOllamaServer()
+                    let endpoint = UserDefaults.standard.string(forKey: "ollamaEndpoint") ?? "http://localhost:11434"
+                    let model = UserDefaults.standard.string(forKey: "ollamaModel") ?? "llama3.2"
+                    ollamaServerRunning = await OllamaProvider(endpoint: endpoint, model: model).isHealthy()
+                    startingOllamaServer = false
                 }
             }
 
@@ -93,6 +113,7 @@ struct SetupView: View {
         .padding()
         .frame(minWidth: 500, minHeight: 350)
         .onAppear { refreshStatus() }
+        .task { await refreshOllamaHealth() }
     }
 
     // MARK: - Dependency Row
@@ -172,6 +193,28 @@ struct SetupView: View {
         ]
         ollamaInstalled = ollamaPaths.contains(where: { fm.fileExists(atPath: $0) })
             || fm.fileExists(atPath: "/Applications/Ollama.app")
+    }
+
+    private func refreshOllamaHealth() async {
+        let endpoint = UserDefaults.standard.string(forKey: "ollamaEndpoint") ?? "http://localhost:11434"
+        let model = UserDefaults.standard.string(forKey: "ollamaModel") ?? "llama3.2"
+        ollamaServerRunning = await OllamaProvider(endpoint: endpoint, model: model).isHealthy()
+    }
+
+    private func startOllamaServer() async {
+        let endpoint = UserDefaults.standard.string(forKey: "ollamaEndpoint") ?? "http://localhost:11434"
+        let model = UserDefaults.standard.string(forKey: "ollamaModel") ?? "llama3.2"
+        showLog = true
+        do {
+            let running = try await OllamaServerManager.startIfNeeded(endpoint: endpoint, model: model)
+            if running {
+                installLog += "Ollama server is running on \(endpoint)\n"
+            } else {
+                installLog += "Ollama did not become healthy within timeout\n"
+            }
+        } catch {
+            installLog += "Failed to start Ollama: \(error.localizedDescription)\n"
+        }
     }
 
     // MARK: - Process Runner
