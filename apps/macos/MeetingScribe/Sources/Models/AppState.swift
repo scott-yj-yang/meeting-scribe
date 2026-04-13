@@ -95,12 +95,23 @@ class AppState: ObservableObject {
 
     func openLiveChatPanel() {
         showLiveChatPanel = true
-        // Ensure live transcript is on and won't be reset while chat is open
-        if !liveTranscriptActive {
-            liveTranscriptActive = true
-        }
         liveTranscriptTimer?.invalidate()
         liveTranscriptTimer = nil
+
+        // If transcription was torn down (e.g. by a prior audio-check timeout),
+        // bring it back up so the live chat panel has a transcript to work with.
+        if !liveTranscriptActive {
+            Task { [weak self] in
+                guard let self = self else { return }
+                do {
+                    try await self.transcriptionManager.setup()
+                    self.liveTranscriptActive = true
+                } catch {
+                    print("[Chat] Failed to restart live transcript: \(error.localizedDescription)")
+                    self.liveTranscriptActive = true
+                }
+            }
+        }
     }
 
     func closeLiveChatPanel() {
@@ -119,16 +130,9 @@ class AppState: ObservableObject {
             do {
                 try await transcriptionManager.setup()
                 liveTranscriptActive = true
-                liveTranscriptTimer?.invalidate()
-                liveTranscriptTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: false) { [weak self] _ in
-                    Task { @MainActor in
-                        guard let self = self else { return }
-                        // Don't reset if the chat panel is open — the user needs the full transcript
-                        guard !self.showLiveChatPanel else { return }
-                        self.liveTranscriptActive = false
-                        self.transcriptionManager.reset()
-                    }
-                }
+                // No 60-second reset during recording — live transcription runs for the
+                // entire meeting so mid-meeting chat and post-recording snippet preview
+                // have the full transcript buffer.
             } catch {
                 print("[Recording] Live transcript unavailable: \(error.localizedDescription)")
                 liveTranscriptActive = true  // Still show the audio check panel (with level meter)
