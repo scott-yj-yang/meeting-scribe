@@ -46,7 +46,7 @@ final class ClaudeCLIProvider: LLMProvider, @unchecked Sendable {
         let p = Process()
         setProcess(p)
         p.executableURL = URL(fileURLWithPath: claudePath)
-        p.arguments = ["--allowedTools", "Read", "-p", fullPrompt]
+        p.arguments = ["--tools", "", "-p", fullPrompt]
         let stdout = Pipe()
         p.standardOutput = stdout
         p.standardError = FileHandle.nullDevice
@@ -102,7 +102,7 @@ final class ClaudeCLIProvider: LLMProvider, @unchecked Sendable {
         let p = Process()
         setProcess(p)
         p.executableURL = URL(fileURLWithPath: claudePath)
-        p.arguments = ["-p", prompt]
+        p.arguments = ["--tools", "", "-p", prompt]
         let stdout = Pipe()
         p.standardOutput = stdout
         p.standardError = FileHandle.nullDevice
