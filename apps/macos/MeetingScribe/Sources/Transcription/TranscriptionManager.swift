@@ -145,7 +145,10 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
         savedChunks.append((text: text, time: elapsed))
         print("[Transcription] Saved chunk #\(savedChunks.count): \"\(text.prefix(100))\"")
         currentSessionText = ""
-        liveText = ""
+        // Recompute preview so it still reflects all saved chunks — do NOT wipe to "".
+        // Wiping would leave mid-meeting chat with no transcript during the 300ms
+        // restart window (and until the next partial result arrives).
+        liveText = fullTranscriptPreview()
     }
 
     private func startNewSession(recognizer: SFSpeechRecognizer) {

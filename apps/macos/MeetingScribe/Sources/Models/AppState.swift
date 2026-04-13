@@ -29,6 +29,7 @@ class AppState: ObservableObject {
     @AppStorage("saveAudio") var saveAudio = true
 
     @Published var liveTranscriptActive = false
+    @Published var liveTranscriptError: String? = nil  // Set when setup() throws; surfaced to chat panel
     @Published var audioLevel: Float = 0  // 0.0 - 1.0, shows mic is receiving audio
     private var liveTranscriptTimer: Timer?
 
@@ -106,9 +107,11 @@ class AppState: ObservableObject {
                 do {
                     try await self.transcriptionManager.setup()
                     self.liveTranscriptActive = true
+                    self.liveTranscriptError = nil
                 } catch {
                     print("[Chat] Failed to restart live transcript: \(error.localizedDescription)")
-                    self.liveTranscriptActive = true
+                    self.liveTranscriptActive = false
+                    self.liveTranscriptError = error.localizedDescription
                 }
             }
         }
@@ -130,12 +133,17 @@ class AppState: ObservableObject {
             do {
                 try await transcriptionManager.setup()
                 liveTranscriptActive = true
+                liveTranscriptError = nil
                 // No 60-second reset during recording — live transcription runs for the
                 // entire meeting so mid-meeting chat and post-recording snippet preview
                 // have the full transcript buffer.
             } catch {
                 print("[Recording] Live transcript unavailable: \(error.localizedDescription)")
-                liveTranscriptActive = true  // Still show the audio check panel (with level meter)
+                // Surface the failure instead of pretending transcription is running.
+                // Audio capture and level meter still work; whisper post-processing still
+                // runs on stop. Only the live Q&A context is affected.
+                liveTranscriptActive = false
+                liveTranscriptError = error.localizedDescription
             }
 
             let transcriber = transcriptionManager

@@ -23,6 +23,17 @@ final class ClaudeCLIProvider: LLMProvider, @unchecked Sendable {
         return paths.contains(where: { FileManager.default.fileExists(atPath: $0) })
     }
 
+    /// Stable working directory for every claude invocation. Pinning to a
+    /// single folder means Claude CLI sees a consistent workspace across
+    /// calls, so workspace-trust and any per-folder auth state persist.
+    private var workingDirectory: URL {
+        let outputDir = UserDefaults.standard.string(forKey: "outputDirectory") ?? "~/MeetingScribe"
+        let path = NSString(string: outputDir).expandingTildeInPath
+        let url = URL(fileURLWithPath: path, isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
     func summarize(
         transcript: String,
         template: String,
@@ -46,7 +57,8 @@ final class ClaudeCLIProvider: LLMProvider, @unchecked Sendable {
         let p = Process()
         setProcess(p)
         p.executableURL = URL(fileURLWithPath: claudePath)
-        p.arguments = ["--tools", "", "-p", fullPrompt]
+        p.currentDirectoryURL = workingDirectory
+        p.arguments = ["--allowedTools", "Read", "-p", fullPrompt]
         let stdout = Pipe()
         p.standardOutput = stdout
         p.standardError = FileHandle.nullDevice
@@ -102,7 +114,8 @@ final class ClaudeCLIProvider: LLMProvider, @unchecked Sendable {
         let p = Process()
         setProcess(p)
         p.executableURL = URL(fileURLWithPath: claudePath)
-        p.arguments = ["--tools", "", "-p", prompt]
+        p.currentDirectoryURL = workingDirectory
+        p.arguments = ["-p", prompt]
         let stdout = Pipe()
         p.standardOutput = stdout
         p.standardError = FileHandle.nullDevice
