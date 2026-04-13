@@ -85,6 +85,13 @@ final class OllamaProvider: LLMProvider {
         return fullText
     }
 
+    func chat(
+        messages: [ChatMessage],
+        onToken: @escaping @Sendable (String) -> Void
+    ) async throws -> String {
+        throw NSError(domain: "MeetingScribe", code: -1, userInfo: [NSLocalizedDescriptionKey: "chat(messages:) not implemented yet"])
+    }
+
     private func loadTemplate(_ name: String) throws -> String {
         let homeDir = NSHomeDirectory()
         let templateDirs = [

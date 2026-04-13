@@ -68,6 +68,13 @@ final class ClaudeCLIProvider: LLMProvider, @unchecked Sendable {
         return fullText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    func chat(
+        messages: [ChatMessage],
+        onToken: @escaping @Sendable (String) -> Void
+    ) async throws -> String {
+        throw NSError(domain: "MeetingScribe", code: -1, userInfo: [NSLocalizedDescriptionKey: "chat(messages:) not implemented yet"])
+    }
+
     func cancel() {
         getProcess()?.terminate()
         setProcess(nil)
