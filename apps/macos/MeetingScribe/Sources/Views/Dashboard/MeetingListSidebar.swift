@@ -91,7 +91,7 @@ struct MeetingListSidebar: View {
                 Menu {
                     Button("All") { selectedType = nil }
                     Divider()
-                    ForEach(["1:1", "Subgroup", "Lab Meeting", "Standup", "Casual"], id: \.self) { type in
+                    ForEach(["1:1", "Subgroup", "Lab Meeting", "Seminar", "Standup", "Casual"], id: \.self) { type in
                         Button(type) { selectedType = type.lowercased() }
                     }
                 } label: {

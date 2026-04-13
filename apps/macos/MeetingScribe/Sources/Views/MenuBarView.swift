@@ -329,7 +329,7 @@ struct MenuBarView: View {
     }
 
     private var meetingTypes: [String] {
-        ["1:1", "Subgroup", "Lab Meeting", "Casual", "Standup"]
+        ["1:1", "Subgroup", "Lab Meeting", "Seminar", "Casual", "Standup"]
     }
 
     // MARK: - Recording

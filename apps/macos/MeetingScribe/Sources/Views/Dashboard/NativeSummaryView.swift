@@ -27,9 +27,15 @@ struct NativeSummaryView: View {
     @State private var currentClaudeProvider: ClaudeCLIProvider?
 
     private let templates = [
-        ("default", "General Meeting"), ("standup", "Daily Standup"),
-        ("planning", "Sprint Planning"), ("retro", "Retrospective"),
+        ("default", "General Meeting"),
         ("one-on-one", "1:1 Meeting"),
+        ("standup", "Daily Standup"),
+        ("planning", "Sprint Planning"),
+        ("retro", "Retrospective"),
+        ("lab-meeting", "Lab Meeting"),
+        ("seminar", "Seminar / Talk"),
+        ("interview", "Interview Debrief"),
+        ("brainstorm", "Brainstorm"),
     ]
 
     var body: some View {

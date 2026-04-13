@@ -6,7 +6,7 @@ struct RecordingModeView: View {
     @StateObject private var liveChatViewModel = MeetingChatViewModel()
     @StateObject private var liveChatLLMSettings = LLMSettings()
 
-    private let meetingTypes = ["1:1", "Subgroup", "Lab Meeting", "Casual", "Standup"]
+    private let meetingTypes = ["1:1", "Subgroup", "Lab Meeting", "Seminar", "Casual", "Standup"]
 
     var body: some View {
         VStack {
