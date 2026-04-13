@@ -8,8 +8,7 @@ struct MeetingScribeApp: App {
     var body: some Scene {
         // Main dashboard window
         Window("MeetingScribe Dashboard", id: "dashboard") {
-            NativeDashboard()
-                .frame(minWidth: 900, minHeight: 600)
+            DashboardRoot()
                 .environmentObject(appState)
                 .onAppear { Self.setAppIcon() }
         }
@@ -51,5 +50,24 @@ struct MeetingScribeApp: App {
            let icon = resourceBundle.image(forResource: "AppIcon") {
             NSApp.applicationIconImage = icon
         }
+    }
+}
+
+private struct DashboardRoot: View {
+    @EnvironmentObject var appState: AppState
+    @AppStorage("hasCompletedWelcome") private var hasCompletedWelcome = false
+
+    var body: some View {
+        NativeDashboard()
+            .frame(minWidth: 900, minHeight: 600)
+            .sheet(isPresented: Binding(
+                get: { !hasCompletedWelcome },
+                set: { newValue in
+                    if !newValue { hasCompletedWelcome = true }
+                }
+            )) {
+                WelcomeView()
+                    .interactiveDismissDisabled()
+            }
     }
 }
