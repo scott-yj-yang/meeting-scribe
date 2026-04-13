@@ -37,12 +37,21 @@ class AppState: ObservableObject {
     @Published var showLiveChatPanel: Bool = false
     @Published var liveChatSession: ChatSession = ChatSession(messages: [])
 
+    // Briefly true while the previous recording is being finalized (stopCapture
+    // + writer.stop). Prevents a new recording from racing the writer reference.
+    @Published var isFinalizingPreviousRecording: Bool = false
+
     private var timer: Timer?
     private var recordingStartDate: Date?
     let audioCaptureManager = AudioCaptureManager()
     let transcriptionManager = TranscriptionManager()
     private var audioFileWriter: AudioFileWriter?
     private let whisperProcessor = WhisperPostProcessor()
+
+    // Serializes post-processing (whisper transcription + markdown + save) so
+    // rapid back-to-back recordings don't run two whisper passes concurrently
+    // on the same shared whisperProcessor.
+    private var postProcessingTask: Task<Void, Never>?
 
     init() {
         meetingStore = MeetingStore(baseDirectory: "~/MeetingScribe")
@@ -56,6 +65,10 @@ class AppState: ObservableObject {
         if isRecording {
             stopRecording()
         } else {
+            guard !isFinalizingPreviousRecording else {
+                statusMessage = "Finalizing previous recording — try again in a moment..."
+                return
+            }
             showPostRecording = false
             currentMeeting = nil
             statusMessage = "Starting..."
@@ -225,38 +238,111 @@ class AppState: ObservableObject {
     }
 
     private func doStopRecording() async {
-        await audioCaptureManager.stopCapture()
+        // === Phase 1: Snapshot all per-recording state BEFORE any `await`.
+        // This is the race-prevention trick: once we yield, a rapid
+        // doStartRecording may overwrite self.audioFileWriter, meetingTitle,
+        // recordingStartDate, etc. By snapshotting first we guarantee
+        // post-processing sees the meeting that was actually being stopped.
+        let writerToFinalize = audioFileWriter
+        audioFileWriter = nil
+
+        let startDate = recordingStartDate ?? Date()
+        recordingStartDate = nil
+        let duration = recordingDuration
+        let capturedTitle: String = {
+            let trimmed = meetingTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty
+                ? "Meeting \(startDate.formatted(.dateTime.month().day().hour().minute()))"
+                : trimmed
+        }()
+        let capturedMeetingType = selectedMeetingType
+        let capturedNotes = meetingNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let capturedEventTitle = selectedCalendarEvent?.title
+        let capturedOutputDir = outputDirectory
+        let capturedCaptureMode = audioCaptureManager.captureMode
+        let capturedLiveChatSession = liveChatSession
+
+        // Clear per-recording UI state so the next recording starts clean.
+        meetingTitle = ""
+        selectedMeetingType = nil
+        selectedCalendarEvent = nil
+        meetingNotes = ""
+        liveChatSession = ChatSession(messages: [])
+
         timer?.invalidate()
         timer = nil
         liveTranscriptTimer?.invalidate()
         liveTranscriptTimer = nil
         liveTranscriptActive = false
-        isRecording = false
-        transcriptionManager.reset()
 
-        guard let writer = audioFileWriter else { return }
-        let audioURL = writer.stop()
-        audioFileWriter = nil
+        // === Phase 2: Finalize audio. This must complete before a new
+        // recording can start (otherwise the shared audioCaptureManager and
+        // writer objects can enter a broken state). toggleRecording refuses
+        // new starts while `isFinalizingPreviousRecording` is true.
+        isFinalizingPreviousRecording = true
+
+        await audioCaptureManager.stopCapture()
+        transcriptionManager.reset()
+        isRecording = false
+
+        let audioURL = writerToFinalize?.stop()
         lastRecordingAudioURL = audioURL
 
-        guard let startDate = recordingStartDate else { return }
-        let title = meetingTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? "Meeting \(startDate.formatted(.dateTime.month().day().hour().minute()))"
-            : meetingTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        isFinalizingPreviousRecording = false
 
+        guard let finalAudioURL = audioURL else { return }
+
+        // === Phase 3: Detached post-processing. Transcription, markdown
+        // generation, and meeting-store persistence all run in a detached
+        // task that waits for any previous post-processing to finish first
+        // (so two whisper passes never run concurrently on the shared
+        // whisperProcessor). While this runs, the user can start a new
+        // recording immediately.
+        let previousPostTask = postProcessingTask
+        postProcessingTask = Task.detached { [weak self] in
+            await previousPostTask?.value
+            await self?.runPostRecordingTranscription(
+                audioURL: finalAudioURL,
+                startDate: startDate,
+                duration: duration,
+                title: capturedTitle,
+                meetingType: capturedMeetingType,
+                notes: capturedNotes,
+                calendarEventTitle: capturedEventTitle,
+                outputDirectory: capturedOutputDir,
+                captureMode: capturedCaptureMode,
+                liveChatSession: capturedLiveChatSession
+            )
+        }
+    }
+
+    /// Runs whisper transcription + markdown generation + meeting store
+    /// persistence using only the snapshot parameters (never live `self.*`
+    /// fields that a concurrent recording could have mutated).
+    @MainActor
+    private func runPostRecordingTranscription(
+        audioURL: URL,
+        startDate: Date,
+        duration: TimeInterval,
+        title: String,
+        meetingType: String?,
+        notes: String,
+        calendarEventTitle: String?,
+        outputDirectory: String,
+        captureMode: AudioCaptureManager.CaptureMode,
+        liveChatSession: ChatSession
+    ) async {
         isTranscribing = true
         transcriptionProgress = 0
         showPostRecording = true
         transcriptionETA = "estimating..."
         statusMessage = "Transcribing..."
 
-        // Wire up progress callback
         whisperProcessor.onProgress = { [weak self] progress, eta in
             self?.transcriptionProgress = progress
             self?.transcriptionETA = eta
         }
 
-        // Transcribe
         var segments: [TranscriptSegment] = []
         var snippetText: String? = nil
         if whisperProcessor.isAvailable {
@@ -271,26 +357,25 @@ class AppState: ObservableObject {
         } else {
             statusMessage = "Install whisper-cpp"
         }
+
         isTranscribing = false
         transcriptionETA = nil
         lastTranscriptSnippet = snippetText
 
-        // Save markdown
         let markdown = MarkdownFormatter.format(
-            title: title, date: startDate, duration: recordingDuration,
-            meetingType: selectedMeetingType?.lowercased(),
-            audioSources: audioCaptureManager.captureMode == .micAndSystem
-                ? ["system", "microphone"] : ["microphone"],
+            title: title, date: startDate, duration: duration,
+            meetingType: meetingType?.lowercased(),
+            audioSources: captureMode == .micAndSystem ? ["system", "microphone"] : ["microphone"],
             segments: segments
         )
 
-        let meetingDir = LocalStorage.meetingDirectory(title: title, date: startDate, baseDirectory: outputDirectory)
+        let meetingDir = LocalStorage.meetingDirectory(
+            title: title, date: startDate, baseDirectory: outputDirectory
+        )
         lastRecordingMarkdownURL = try? LocalStorage.save(
             markdown: markdown, title: title, date: startDate, directory: outputDirectory
         )
 
-        // Save notes if any
-        let notes = meetingNotes.trimmingCharacters(in: .whitespacesAndNewlines)
         if !notes.isEmpty {
             let notesURL = meetingDir.appendingPathComponent("notes.md")
             try? notes.write(to: notesURL, atomically: true, encoding: .utf8)
@@ -298,30 +383,22 @@ class AppState: ObservableObject {
 
         statusMessage = "Saved"
 
-        // Save to local database
         let meeting = meetingStore.createMeeting(
-            title: title, date: startDate, duration: recordingDuration,
-            meetingType: selectedMeetingType?.lowercased(),
+            title: title, date: startDate, duration: duration,
+            meetingType: meetingType?.lowercased(),
             transcriptSnippet: snippetText,
             directoryURL: meetingDir,
-            calendarEventTitle: selectedCalendarEvent?.title,
+            calendarEventTitle: calendarEventTitle,
             notes: notes.isEmpty ? nil : notes
         )
         currentMeeting = meeting
 
-        // Persist live chat session into the new meeting's chat.json
         if !liveChatSession.messages.isEmpty {
-            let sessionToSave = liveChatSession
             let store = ChatSessionStore()
-            try? store.save(sessionToSave, to: meetingDir)
-            liveChatSession = ChatSession(messages: [])
+            try? store.save(liveChatSession, to: meetingDir)
         }
-        showLiveChatPanel = false
 
-        meetingTitle = ""
-        selectedMeetingType = nil
-        selectedCalendarEvent = nil
-        meetingNotes = ""
+        showLiveChatPanel = false
         lastCompletedMeeting = meeting
     }
 
