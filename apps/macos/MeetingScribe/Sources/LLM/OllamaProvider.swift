@@ -14,8 +14,12 @@ final class OllamaProvider: LLMProvider {
     var displayName: String { "Ollama (\(model))" }
 
     init(endpoint: String, model: String, urlSession: URLSession = .shared) {
-        self.endpoint = endpoint
-        self.model = model
+        // Defense in depth: trim any stray whitespace or newline that might
+        // have landed in the endpoint via copy/paste. A trailing \n makes
+        // URL(string:) succeed (Foundation is lenient) but CFNetwork then
+        // rejects the request with NSURLErrorUnsupportedURL (-1002).
+        self.endpoint = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
         self.urlSession = urlSession
     }
 

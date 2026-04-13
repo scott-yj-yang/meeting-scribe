@@ -6,6 +6,12 @@ struct LLMSettingsView: View {
     @State private var statusMessage: String?
     @State private var ollamaHealthy = false
     @State private var checkingHealth = false
+    /// Debounce token for refreshHealth. Every keystroke in the endpoint
+    /// TextField schedules a new refresh; we only fire the URLSession call
+    /// 400ms after the last keystroke so rapid typing doesn't spam CFNetwork
+    /// with partial-URL tasks (each of which fails with -1002 and may
+    /// pollute URLSession.shared's cache).
+    @State private var healthRefreshTask: Task<Void, Never>?
 
     var body: some View {
         Form {
@@ -111,7 +117,7 @@ struct LLMSettingsView: View {
                         await refreshHealth()
                     }
                     .onChange(of: settings.ollamaEndpoint) { _, _ in
-                        Task { await refreshHealth() }
+                        scheduleDebouncedHealthRefresh()
                     }
 
                     if let msg = statusMessage {
@@ -156,6 +162,27 @@ struct LLMSettingsView: View {
     private func refreshHealth() async {
         let provider = OllamaProvider(endpoint: settings.ollamaEndpoint, model: settings.ollamaModel)
         ollamaHealthy = await provider.isHealthy()
+    }
+
+    /// Debounced wrapper for refreshHealth: cancels any pending refresh and
+    /// schedules a new one 400ms out, so rapid typing in the endpoint field
+    /// only fires one URLSession call (the final one) instead of one per
+    /// keystroke. Also refreshes the model picker on success so the UI
+    /// statusMessage clears when the endpoint finally resolves.
+    private func scheduleDebouncedHealthRefresh() {
+        healthRefreshTask?.cancel()
+        healthRefreshTask = Task { [settings] in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            if Task.isCancelled { return }
+            await refreshHealth()
+            // If the debounced endpoint is healthy, also refresh the model
+            // list so statusMessage transitions from a stale error to
+            // "Connected — N models available" without requiring a manual
+            // click on the Refresh button.
+            if ollamaHealthy && settings.providerKind == .ollama {
+                await refreshModels()
+            }
+        }
     }
 
     private func startServer() async {
