@@ -3,6 +3,8 @@ import SwiftUI
 /// Full-pane active meeting view with three phases: pre-recording, recording, and post-recording.
 struct RecordingModeView: View {
     @EnvironmentObject var appState: AppState
+    @StateObject private var liveChatViewModel = MeetingChatViewModel()
+    @StateObject private var liveChatLLMSettings = LLMSettings()
 
     private let meetingTypes = ["1:1", "Subgroup", "Lab Meeting", "Casual", "Standup"]
 
@@ -72,64 +74,169 @@ struct RecordingModeView: View {
     // MARK: - Phase 2: Recording
 
     private var recordingPhase: some View {
-        VStack(spacing: 0) {
-            Spacer()
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                Spacer()
 
-            VStack(spacing: 24) {
-                // Recording indicator
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(.red)
-                        .frame(width: 10, height: 10)
-                    Text("Recording")
-                        .font(.headline)
-                        .foregroundStyle(.red)
-                    Text(formatDuration(appState.recordingDuration))
-                        .font(.system(.headline, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                }
-
-                // Editable title
-                TextField("Untitled meeting", text: $appState.meetingTitle)
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .textFieldStyle(.plain)
-                    .multilineTextAlignment(.center)
-
-                // Calendar event badge
-                if let event = appState.selectedCalendarEvent {
-                    HStack(spacing: 4) {
-                        Image(systemName: "link")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.blue.opacity(0.7))
-                        Text(event.title)
-                            .font(.subheadline)
-                            .foregroundStyle(.blue.opacity(0.7))
-                            .lineLimit(1)
+                VStack(spacing: 24) {
+                    // Recording indicator
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(.red)
+                            .frame(width: 10, height: 10)
+                        Text("Recording")
+                            .font(.headline)
+                            .foregroundStyle(.red)
+                        Text(formatDuration(appState.recordingDuration))
+                            .font(.system(.headline, design: .monospaced))
+                            .foregroundStyle(.secondary)
                     }
+
+                    // Editable title
+                    TextField("Untitled meeting", text: $appState.meetingTitle)
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .textFieldStyle(.plain)
+                        .multilineTextAlignment(.center)
+
+                    // Calendar event badge
+                    if let event = appState.selectedCalendarEvent {
+                        HStack(spacing: 4) {
+                            Image(systemName: "link")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.blue.opacity(0.7))
+                            Text(event.title)
+                                .font(.subheadline)
+                                .foregroundStyle(.blue.opacity(0.7))
+                                .lineLimit(1)
+                        }
+                    }
+
+                    // Waveform visualization
+                    WaveformBars(level: appState.audioLevel, tint: .red)
+                        .frame(height: 24)
+
+                    // Notes area
+                    notesEditor
+
+                    // Stop button
+                    Button {
+                        appState.toggleRecording()
+                    } label: {
+                        Label("Stop Recording", systemImage: "stop.circle")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                    .controlSize(.large)
                 }
+                .frame(maxWidth: 500)
 
-                // Waveform visualization
-                WaveformBars(level: appState.audioLevel, tint: .red)
-                    .frame(height: 24)
-
-                // Notes area
-                notesEditor
-
-                // Stop button
-                Button {
-                    appState.toggleRecording()
-                } label: {
-                    Label("Stop Recording", systemImage: "stop.circle")
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.red)
-                .controlSize(.large)
+                Spacer()
             }
-            .frame(maxWidth: 500)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding()
 
-            Spacer()
+            if appState.showLiveChatPanel {
+                Divider()
+                liveChatPanelView
+                    .frame(width: 380)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
         }
-        .padding()
+        .animation(.easeInOut(duration: 0.25), value: appState.showLiveChatPanel)
+        .overlay(alignment: .topTrailing) {
+            if !appState.showLiveChatPanel {
+                Button {
+                    appState.openLiveChatPanel()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "bubble.left.and.bubble.right.fill")
+                        Text("Ask AI")
+                    }
+                    .font(.system(.callout, design: .rounded, weight: .medium))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Capsule().fill(Color.blue))
+                    .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
+                }
+                .buttonStyle(.plain)
+                .clickableHover(cornerRadius: 22)
+                .padding(16)
+                .transition(.opacity.combined(with: .scale))
+            }
+        }
+    }
+
+    // MARK: - Live Chat Panel
+
+    @ViewBuilder
+    private var liveChatPanelView: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Live chat")
+                    .font(.system(.headline, design: .rounded))
+                Spacer()
+                Button {
+                    appState.closeLiveChatPanel()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .semibold))
+                        .iconHitTarget(.compact)
+                }
+                .buttonStyle(.plain)
+                .clickableHover()
+            }
+            .padding(12)
+            Divider()
+
+            MeetingChatPanel(
+                viewModel: liveChatViewModel,
+                presetMode: .live
+            )
+        }
+        .onAppear {
+            configureLiveChatViewModel()
+        }
+    }
+
+    private func configureLiveChatViewModel() {
+        liveChatViewModel.loadExisting(appState.liveChatSession.messages)
+
+        liveChatViewModel.systemMessageProvider = { [weak appState] in
+            guard let appState = appState else {
+                return ChatMessage(role: .system, text: "")
+            }
+            let transcript = appState.transcriptionManager.liveText
+            let context = MeetingContext(
+                title: appState.meetingTitle.isEmpty ? "Current meeting" : appState.meetingTitle,
+                date: Date(),
+                durationSeconds: appState.recordingDuration,
+                calendarEventTitle: appState.selectedCalendarEvent?.title,
+                notes: appState.meetingNotes.isEmpty ? nil : appState.meetingNotes,
+                transcript: transcript.isEmpty ? "(Transcription is starting...)" : transcript,
+                summary: nil,
+                mode: .live
+            )
+            return MeetingContextBuilder.buildSystemMessage(context: context)
+        }
+
+        // Snapshot LLM settings on MainActor before entering the nonisolated closure
+        let kind = liveChatLLMSettings.providerKind
+        let endpoint = liveChatLLMSettings.ollamaEndpoint
+        let model = liveChatLLMSettings.ollamaModel
+
+        liveChatViewModel.runChat = { messages, onToken in
+            let provider = LLMProviderFactory.make(
+                kind: kind,
+                ollamaEndpoint: endpoint,
+                ollamaModel: model
+            )
+            return try await provider.chat(messages: messages, onToken: onToken)
+        }
+
+        liveChatViewModel.onTurnComplete = { [weak appState] messages in
+            appState?.liveChatSession = ChatSession(messages: messages)
+        }
     }
 
     // MARK: - Phase 3: Post-recording

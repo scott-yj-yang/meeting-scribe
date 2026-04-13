@@ -32,6 +32,10 @@ class AppState: ObservableObject {
     @Published var audioLevel: Float = 0  // 0.0 - 1.0, shows mic is receiving audio
     private var liveTranscriptTimer: Timer?
 
+    // MARK: - Live chat during recording
+    @Published var showLiveChatPanel: Bool = false
+    @Published var liveChatSession: ChatSession = ChatSession(messages: [])
+
     private var timer: Timer?
     private var recordingStartDate: Date?
     let audioCaptureManager = AudioCaptureManager()
@@ -73,8 +77,11 @@ class AppState: ObservableObject {
         liveTranscriptTimer?.invalidate()
         liveTranscriptTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: false) { [weak self] _ in
             Task { @MainActor in
-                self?.liveTranscriptActive = false
-                self?.transcriptionManager.reset()
+                guard let self = self else { return }
+                // Don't reset if the chat panel is open — the user needs the full transcript
+                guard !self.showLiveChatPanel else { return }
+                self.liveTranscriptActive = false
+                self.transcriptionManager.reset()
             }
         }
     }
@@ -84,6 +91,24 @@ class AppState: ObservableObject {
         liveTranscriptTimer?.invalidate()
         liveTranscriptTimer = nil
         transcriptionManager.reset()
+    }
+
+    func openLiveChatPanel() {
+        showLiveChatPanel = true
+        // Ensure live transcript is on and won't be reset while chat is open
+        if !liveTranscriptActive {
+            liveTranscriptActive = true
+        }
+        liveTranscriptTimer?.invalidate()
+        liveTranscriptTimer = nil
+    }
+
+    func closeLiveChatPanel() {
+        showLiveChatPanel = false
+        // Let the regular 60s timer rearm — restart it fresh
+        if isRecording {
+            enableLiveTranscriptTemporarily()
+        }
     }
 
     private func doStartRecording() async {
@@ -97,8 +122,11 @@ class AppState: ObservableObject {
                 liveTranscriptTimer?.invalidate()
                 liveTranscriptTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: false) { [weak self] _ in
                     Task { @MainActor in
-                        self?.liveTranscriptActive = false
-                        self?.transcriptionManager.reset()
+                        guard let self = self else { return }
+                        // Don't reset if the chat panel is open — the user needs the full transcript
+                        guard !self.showLiveChatPanel else { return }
+                        self.liveTranscriptActive = false
+                        self.transcriptionManager.reset()
                     }
                 }
             } catch {
@@ -268,6 +296,15 @@ class AppState: ObservableObject {
             notes: notes.isEmpty ? nil : notes
         )
         currentMeeting = meeting
+
+        // Persist live chat session into the new meeting's chat.json
+        if !liveChatSession.messages.isEmpty {
+            let sessionToSave = liveChatSession
+            let store = ChatSessionStore()
+            try? store.save(sessionToSave, to: meetingDir)
+            liveChatSession = ChatSession(messages: [])
+        }
+        showLiveChatPanel = false
 
         meetingTitle = ""
         selectedMeetingType = nil
