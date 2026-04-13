@@ -19,9 +19,17 @@ struct NativeTranscriptView: View {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                 TextField("Search transcript...", text: $searchText).textFieldStyle(.plain)
                 if !searchText.isEmpty {
-                    Button { searchText = "" } label: {
-                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
-                    }.buttonStyle(.borderless)
+                    Button {
+                        searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.secondary)
+                            .iconHitTarget(.compact)
+                    }
+                    .buttonStyle(.plain)
+                    .clickableHover()
+                    .help("Clear search")
                 }
             }
             .padding(8)

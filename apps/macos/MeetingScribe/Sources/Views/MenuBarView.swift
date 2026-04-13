@@ -58,8 +58,10 @@ struct MenuBarView: View {
                 Image(systemName: "macwindow")
                     .font(.system(size: 11))
                     .foregroundStyle(.blue)
+                    .iconHitTarget(.compact)
             }
             .buttonStyle(.borderless)
+            .clickableHover()
             .help("Open Dashboard")
         }
         .padding(.horizontal, 16)
@@ -103,8 +105,12 @@ struct MenuBarView: View {
             } label: {
                 Label("Settings", systemImage: "gear")
                     .font(.caption)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
+            .clickableHover()
 
             Spacer()
 
@@ -114,8 +120,12 @@ struct MenuBarView: View {
                 Text("Quit")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
+            .clickableHover()
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

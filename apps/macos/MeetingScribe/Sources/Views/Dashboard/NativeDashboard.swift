@@ -72,14 +72,22 @@ struct NativeDashboard: View {
                         }
                     } label: {
                         Image(systemName: selectedType != nil ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                            .font(.system(size: 16, weight: .medium))
+                            .iconHitTarget(.compact)
                     }
+                    .menuStyle(.borderlessButton)
+                    .help("Filter meetings by type")
                 }
                 ToolbarItem(placement: .automatic) {
                     Button {
                         showRecordingMode = true
                     } label: {
                         Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 16, weight: .medium))
+                            .iconHitTarget(.compact)
                     }
+                    .buttonStyle(.plain)
+                    .help("Start a new meeting")
                 }
             }
             .navigationTitle("Meetings")

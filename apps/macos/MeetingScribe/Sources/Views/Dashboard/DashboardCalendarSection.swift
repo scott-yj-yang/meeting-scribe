@@ -47,19 +47,25 @@ struct DashboardCalendarBanner: View {
                 toggleSelection(event)
             } label: {
                 Image(systemName: isSelected(event) ? "checkmark.circle.fill" : "checkmark.circle")
+                    .font(.system(size: 16))
                     .foregroundStyle(isSelected(event) ? .blue : .secondary)
+                    .iconHitTarget(.compact)
             }
             .buttonStyle(.plain)
+            .clickableHover()
 
             if !appState.calendarManager.upcomingEvents.isEmpty {
                 Button {
-                    isExpanded.toggle()
+                    withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() }
                 } label: {
                     Image(systemName: "chevron.right")
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.secondary)
+                        .iconHitTarget(.compact)
                 }
                 .buttonStyle(.plain)
+                .clickableHover()
             }
         }
         .padding(.horizontal, 12)
@@ -91,6 +97,7 @@ struct DashboardCalendarBanner: View {
                             .foregroundStyle(.secondary)
 
                         Image(systemName: isSelected(event) ? "checkmark.circle.fill" : "checkmark.circle")
+                            .font(.system(size: 16))
                             .foregroundStyle(isSelected(event) ? .blue : .secondary)
                     }
                     .padding(.horizontal, 12)
@@ -98,6 +105,7 @@ struct DashboardCalendarBanner: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .clickableHover()
             }
         }
     }
