@@ -27,6 +27,13 @@ class AppState: ObservableObject {
 
     @AppStorage("outputDirectory") var outputDirectory = "~/MeetingScribe"
     @AppStorage("saveAudio") var saveAudio = true
+    // Live transcription (SFSpeechRecognizer) runs an always-on recognition
+    // task with a 300ms restart loop during recording. That's heavy on CPU
+    // and on-device quality is inconsistent for multi-speaker meetings.
+    // Default off — post-recording whisper-cpp transcription is the primary
+    // path and is higher quality. Users who want live Q&A context can turn
+    // it back on in Settings → Setup.
+    @AppStorage("liveTranscriptEnabled") var liveTranscriptEnabled = false
 
     @Published var liveTranscriptActive = false
     @Published var liveTranscriptError: String? = nil  // Set when setup() throws; surfaced to chat panel
@@ -112,6 +119,12 @@ class AppState: ObservableObject {
         liveTranscriptTimer?.invalidate()
         liveTranscriptTimer = nil
 
+        // If the user has live transcription disabled, don't silently re-enable
+        // it — chat has no transcript context until the recording stops and
+        // whisper runs. (A future enhancement: snapshot the in-flight WAV and
+        // run whisper on demand here.)
+        guard liveTranscriptEnabled else { return }
+
         // If transcription was torn down (e.g. by a prior audio-check timeout),
         // bring it back up so the live chat panel has a transcript to work with.
         if !liveTranscriptActive {
@@ -142,21 +155,29 @@ class AppState: ObservableObject {
         let startDate = Date()
 
         do {
-            // Try live transcript — non-fatal if it fails
-            do {
-                try await transcriptionManager.setup()
-                liveTranscriptActive = true
-                liveTranscriptError = nil
-                // No 60-second reset during recording — live transcription runs for the
-                // entire meeting so mid-meeting chat and post-recording snippet preview
-                // have the full transcript buffer.
-            } catch {
-                print("[Recording] Live transcript unavailable: \(error.localizedDescription)")
-                // Surface the failure instead of pretending transcription is running.
-                // Audio capture and level meter still work; whisper post-processing still
-                // runs on stop. Only the live Q&A context is affected.
+            // Try live transcript — non-fatal if it fails. Skipped entirely
+            // when the user has disabled it in settings: that saves ~1 CPU
+            // core during recording from the always-on SFSpeechRecognizer
+            // restart loop, and avoids the unreliable on-device partials.
+            if liveTranscriptEnabled {
+                do {
+                    try await transcriptionManager.setup()
+                    liveTranscriptActive = true
+                    liveTranscriptError = nil
+                    // No 60-second reset during recording — live transcription runs for the
+                    // entire meeting so mid-meeting chat and post-recording snippet preview
+                    // have the full transcript buffer.
+                } catch {
+                    print("[Recording] Live transcript unavailable: \(error.localizedDescription)")
+                    // Surface the failure instead of pretending transcription is running.
+                    // Audio capture and level meter still work; whisper post-processing still
+                    // runs on stop. Only the live Q&A context is affected.
+                    liveTranscriptActive = false
+                    liveTranscriptError = error.localizedDescription
+                }
+            } else {
                 liveTranscriptActive = false
-                liveTranscriptError = error.localizedDescription
+                liveTranscriptError = nil
             }
 
             let transcriber = transcriptionManager

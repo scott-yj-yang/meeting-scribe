@@ -13,6 +13,11 @@ final class NotionClient {
     struct DatabaseInfo {
         let id: String
         let title: String
+        /// Name of the database's title property. Notion databases always have
+        /// exactly one property with type "title", but its name is user-defined
+        /// (commonly "Name", but could be "Title", "Meeting", "Task", etc.).
+        /// Hardcoding "Name" breaks any database where the user renamed it.
+        let titlePropertyName: String
     }
 
     enum NotionError: LocalizedError {
@@ -54,7 +59,22 @@ final class NotionClient {
             throw NotionError.invalidResponse
         }
         let title = titleArr.compactMap { ($0["plain_text"] as? String) }.joined()
-        return DatabaseInfo(id: cleanId, title: title.isEmpty ? "(untitled)" : title)
+
+        // Find the title-type property. Default to "Name" only if detection fails.
+        var titlePropName = "Name"
+        if let properties = obj["properties"] as? [String: Any] {
+            for (name, value) in properties {
+                if let prop = value as? [String: Any], prop["type"] as? String == "title" {
+                    titlePropName = name
+                    break
+                }
+            }
+        }
+        return DatabaseInfo(
+            id: cleanId,
+            title: title.isEmpty ? "(untitled)" : title,
+            titlePropertyName: titlePropName
+        )
     }
 
     /// Create a page in a database with the given title, properties, and children blocks.

@@ -239,6 +239,13 @@ struct MeetingDetailView: View {
                 }
             }
             .frame(maxHeight: .infinity)
+            // Force SwiftUI to rebuild the content subtree when the selected
+            // meeting changes. Without this, inner `@State` (summaryText in
+            // NativeSummaryView, notes in NativeNotesEditor) persists across
+            // meeting switches because SwiftUI reuses the existing view
+            // instance — so you'd still see the previous meeting's content
+            // even though `meeting` is a new value.
+            .id(meeting.id)
         }
     }
 

@@ -41,17 +41,20 @@
       - Ollama runs as plain HTTP on localhost, LAN private ranges
         (192.168.x, 10.x, 172.16-31.x), CGNAT/Tailscale (100.64.0.0/10),
         or any user-specified host.
-      NSAllowsLocalNetworking alone is insufficient because it only exempts
-      .local mDNS and unqualified hostnames, not IP literals on private or
-      CGNAT ranges. Enable NSAllowsArbitraryLoads because the network surface
-      is strictly bounded by user-configured endpoints — there are no
-      third-party HTTP calls in the app.
+      Only NSAllowsArbitraryLoads is set — NOT NSAllowsLocalNetworking.
+      When BOTH keys are true, macOS picks the more restrictive rule
+      (NSAllowsLocalNetworking), which only exempts RFC 1918 (192.168/16,
+      10/8, 172.16/12), .local, and unqualified hostnames. CGNAT/Tailscale
+      (100.64.0.0/10) is NOT in that allowlist, so requests to Tailscale IPs
+      fail with NSURLErrorDomain -1022 even though the intent was to allow
+      them. NSAllowsArbitraryLoads alone is the nuclear option that actually
+      works for every plain-HTTP endpoint. The network surface is strictly
+      bounded by user-configured endpoints — there are no third-party HTTP
+      calls in the app.
     -->
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsArbitraryLoads</key>
-        <true/>
-        <key>NSAllowsLocalNetworking</key>
         <true/>
     </dict>
 </dict>

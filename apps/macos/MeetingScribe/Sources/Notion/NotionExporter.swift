@@ -19,6 +19,13 @@ enum NotionExporter {
     ) async throws -> String {
         let client = NotionClient(token: token)
 
+        // Fetch the target database schema to discover the title property's
+        // real name. Notion databases always have exactly one title-typed
+        // property, but users rename it freely ("Name", "Title", "Meeting",
+        // "Task"…). Hardcoding "Name" produces a 400 validation_error on any
+        // database where it was renamed.
+        let dbInfo = try await client.retrieveDatabase(id: databaseId)
+
         var blocks: [[String: Any]] = []
 
         // Header: title already lives in Notion's title property. Add subtitle with date + duration.
@@ -45,6 +52,7 @@ enum NotionExporter {
         let pageId = try await client.createPage(
             databaseId: databaseId,
             title: meeting.title,
+            titlePropertyName: dbInfo.titlePropertyName,
             children: blocks
         )
         return pageId

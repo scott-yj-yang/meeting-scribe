@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct SetupView: View {
+    @AppStorage("liveTranscriptEnabled") private var liveTranscriptEnabled = false
+
     @State private var whisperInstalled = false
     @State private var whisperModelInstalled = false
     @State private var claudeInstalled = false
@@ -19,6 +21,16 @@ struct SetupView: View {
     var body: some View {
         Form {
             Section("Transcription") {
+                Toggle(isOn: $liveTranscriptEnabled) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Live transcription during recording")
+                        Text("Runs Apple's on-device speech recognizer while you record so the live Q&A panel has context. Costs ~1 CPU core. Off by default — whisper-cpp runs when recording stops either way.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
                 dependencyRow(
                     name: "whisper-cpp",
                     description: "Speech-to-text transcription engine",
