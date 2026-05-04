@@ -93,6 +93,32 @@ class AppState: ObservableObject {
         }
     }
 
+    /// Toggles `liveTranscriptEnabled` and starts/stops the recognizer
+    /// mid-recording. Called by the transcript-toggle button in
+    /// `RecordingTopBar`.
+    func toggleLiveTranscript() {
+        liveTranscriptEnabled.toggle()
+        guard isRecording else { return }
+        if liveTranscriptEnabled {
+            // Mirror openLiveChatPanel(): start the recognizer mid-recording.
+            Task { [weak self] in
+                guard let self = self else { return }
+                do {
+                    try await self.transcriptionManager.setup()
+                    self.liveTranscriptActive = true
+                    self.liveTranscriptError = nil
+                } catch {
+                    self.liveTranscriptActive = false
+                    self.liveTranscriptError = error.localizedDescription
+                }
+            }
+        } else {
+            transcriptionManager.reset()
+            liveTranscriptActive = false
+            liveTranscriptError = nil
+        }
+    }
+
     private func enableLiveTranscriptTemporarily() {
         liveTranscriptActive = true
         liveTranscriptTimer?.invalidate()
