@@ -1,8 +1,8 @@
 # Recording-time Note-Taking UI — Design Spec
 
 **Date:** 2026-05-04
-**Status:** Approved (pending user review of this document)
-**Scope:** Redesign the in-meeting recording UI in the macOS app to make note-taking feel natural, with live markdown rendering and an optional live-transcript companion pane.
+**Status:** Approved
+**Scope:** Redesign the in-meeting recording UI in the macOS app to make note-taking feel natural, with live markdown rendering, an optional live-transcript companion pane, click-to-anchor transcript timestamps, and slash-command structure tagging.
 
 ---
 
@@ -59,13 +59,16 @@ The toggle binds to the existing `appState.liveTranscriptEnabled` `@AppStorage` 
 
 - `RecordingWorkspace.swift` — top-level container for the recording phase. Composes top bar + notes editor + optional transcript pane. Replaces the inline `recordingPhase` body in `RecordingModeView`.
 - `RecordingTopBar.swift` — thin status strip (red dot, timer, inline-editable title, transcript toggle, audio-level dots, de-emphasized stop button).
-- `MarkdownNotesEditor.swift` — `NSViewRepresentable` wrapping `NSTextView`. Two-way binding to `appState.meetingNotes`.
+- `MarkdownNotesEditor.swift` — `NSViewRepresentable` wrapping `NSTextView`. Two-way binding to `appState.meetingNotes`. Hosts the slash-command menu.
 - `MarkdownStyler.swift` — pure-Swift module that, given a string, returns the attribute ranges to apply. Separated from `MarkdownNotesEditor` to be unit-testable.
-- `LiveTranscriptPane.swift` — read-only auto-scrolling view of `transcriptionManager.liveText`, with empty/error/streaming states.
+- `SlashCommandMenu.swift` — small `NSWindow`-anchored popup shown when the user types `/` at a line start in the notes editor. Lists action / decision / question / note. Insertion is delegated back to the editor.
+- `LiveTranscriptPane.swift` — auto-scrolling, **clickable** list view of transcript chunks. Shows empty/error/streaming states.
+- `LiveTranscriptChunk.swift` — small value type `(id: UUID, text: String, startTime: TimeInterval, endTime: TimeInterval)`. Promotes the existing private `(text, time)` tuple in `TranscriptionManager.savedChunks` into a typed model.
 
-**Modified file:**
+**Modified files:**
 
 - `RecordingModeView.swift` — `recordingPhase` becomes a thin shell that places `RecordingWorkspace(...)` and keeps the existing `liveChatPanelView` overlay + floating "Ask AI" button untouched.
+- `TranscriptionManager.swift` — promote `savedChunks` from a private `[(text, time)]` tuple array to a `@Published [LiveTranscriptChunk]` (renamed `liveChunks`). Each chunk gets a `startTime` derived from the previous chunk's end (currently `lastEnd`). The cumulative `liveText` derivation (`fullTranscriptPreview()`) stays unchanged for backward compatibility with the chat panel system message.
 
 **Deleted file:**
 
@@ -112,7 +115,19 @@ Left to right:
   - On `textDidChange`: write back to the binding **on the main run loop** to coalesce rapid keystrokes (e.g. via `DispatchQueue.main.async`)
   - After binding update, call `MarkdownStyler.applyAttributes(to: textStorage)` which re-applies attributes to the entire storage (the document is small enough — meeting notes — that full-rescan is fine)
   - Place caret correctly across attribute updates (NSTextView preserves selection across `setAttributes`)
+  - Detects `/` typed at a line start (caret is at the beginning of a line and the inserted character is `/`): show `SlashCommandMenu` anchored under the caret. Esc dismisses; arrow keys navigate; Return/Enter inserts.
 - `updateNSView`: when the binding changes from outside (e.g. notes loaded from a meeting), set `string` and re-style.
+
+#### `SlashCommandMenu`
+
+Lightweight popup (an `NSWindow` of style `.utilityWindow` or an overlay `NSViewController` — implementer's choice; both are simple) shown by `MarkdownNotesEditor` when `/` is typed at a line start.
+
+- Items: **Action**, **Decision**, **Question**, **Note**.
+- Selecting an item:
+  - Removes the typed `/` from the text storage.
+  - Inserts a callout-style line at the caret: e.g. `> [!action] ` for Action, `> [!decision] ` for Decision, etc. (Markdown blockquote with a Notion-style callout marker.)
+  - Caret ends positioned after the marker, ready for content.
+- The blockquote-callout shape means raw markdown remains valid and the saved `notes.md` stays human-readable. `MarkdownStyler` recognizes the `[!action]` etc. tags and renders them as colored chips at the start of the line.
 
 Inline-style markdown means: the syntax characters (`**`, `#`, `-`) **remain visible** but the affected text gets the matching style. Easier to implement, simpler caret behavior, and gives the user a visible "what markdown am I writing" cue. (Hide-syntax editors like Notion are deferred — they add caret-positioning complexity that's not worth Phase 1.)
 
@@ -140,26 +155,39 @@ Patterns supported in Phase 1:
 | `[x]` (line start) | render as ☑ glyph |
 | `> quote` (line start) | left border indent + secondary color |
 | `` `code` `` | monospaced font, subtle background highlight |
+| `> [!action] text` (line start) | "ACTION" red chip + indented body |
+| `> [!decision] text` | "DECISION" green chip + indented body |
+| `> [!question] text` | "QUESTION" blue chip + indented body |
+| `> [!note] text` | "NOTE" gray chip + indented body |
 
 Implementation: enumerate lines; for each line, apply line-level attributes; then run inline regex passes over the line range. Reset attributes at the start of each apply pass to avoid stale styles on edited text.
 
 #### `LiveTranscriptPane`
 
-Read-only view of `transcriptionManager.liveText`. Gets a reference to `appState.transcriptionManager` (already on AppState as `let`).
+Auto-scrolling list of `[LiveTranscriptChunk]` from `transcriptionManager.liveChunks`, with the in-flight current-session text appended as a "tentative" trailing chunk. Each chunk is **clickable**.
 
-States:
-- **Streaming:** scrolling text view, auto-scroll to bottom on update. The most recent ~80 chars are full opacity; older text fades to ~70% opacity to convey "ongoing flow." Header: `LIVE TRANSCRIPT` small caps + pulsing dot.
-- **Listening (no speech yet):** placeholder text "Listening… speak to see the live transcript here."
-- **Error:** `appState.liveTranscriptError` non-nil — show "Live transcript unavailable: <message>. Recording continues; full transcript will appear after stop." Disabled visual treatment.
+Layout:
+- Header: `LIVE TRANSCRIPT` small-caps label + pulsing red dot.
+- Body: a `ScrollViewReader`-anchored `LazyVStack` of chunk rows. Auto-scroll to the bottom whenever a new chunk lands.
+- Each chunk row: timestamp pill (e.g. `0:42`) + chunk text. Older chunks fade to ~70% opacity. The trailing in-flight chunk has a subtle pulsing highlight.
+- Empty state (`liveChunks.isEmpty && currentSessionText.isEmpty`): "Listening… speak to see the live transcript here."
+- Error state (`appState.liveTranscriptError != nil`): "Live transcript unavailable: <message>. Recording continues; full transcript will appear after stop."
 
-The pane reads `transcriptionManager.liveText` directly (already `@Published`); it does not own any state.
+Click behavior:
+- Clicking a chunk inserts `[m:ss] ` at the current caret position in `MarkdownNotesEditor`. The format uses the chunk's `startTime` rounded to seconds (e.g. `[0:42] `).
+- Implementation: the pane exposes an `onChunkClick: (LiveTranscriptChunk) -> Void` closure, which `RecordingWorkspace` wires to a method on the notes editor's coordinator that inserts text at caret and re-styles.
+- The notes editor focus follows the click — caret moves into the notes pane after the timestamp is inserted, so the user can immediately type their note.
+
+The pane reads chunks directly from `transcriptionManager.liveChunks` (`@Published`) and `transcriptionManager.currentSessionText` (already `@Published` via the existing `liveText` derivation; we'll either expose it directly or keep it private and re-derive). It does not own any state.
 
 ### Data flow
 
 | State | Source | Direction | Consumer |
 |---|---|---|---|
 | `meetingNotes` | `appState.meetingNotes` (@Published) | RW | `MarkdownNotesEditor` |
-| `liveText` | `transcriptionManager.liveText` (@Published) | R | `LiveTranscriptPane` |
+| `liveChunks` | `transcriptionManager.liveChunks` (@Published) | R | `LiveTranscriptPane` |
+| `currentSessionText` | `transcriptionManager` (@Published) | R | `LiveTranscriptPane` (in-flight chunk) |
+| `liveText` | `transcriptionManager.liveText` (@Published, derived) | R | `MeetingChatPanel` (system message) — unchanged |
 | `liveTranscriptEnabled` | `appState.liveTranscriptEnabled` (@AppStorage) | RW | toggle button + pane visibility |
 | `liveTranscriptActive` | `appState` (@Published) | R | toggle button visual state |
 | `liveTranscriptError` | `appState.liveTranscriptError` | R | `LiveTranscriptPane` error state |
@@ -228,24 +256,25 @@ The existing `enableLiveTranscriptTemporarily()` / `disableLiveTranscript()` (us
 
 ## Scope
 
-### In Phase 1 (this spec)
+### In scope
 
 - All new files listed above.
-- Markdown live rendering for the patterns in the table.
+- Markdown live rendering for the patterns in the table (including the four callout chips).
 - Transcript toggle wired to `liveTranscriptEnabled` with mid-recording start/stop.
+- Clickable transcript chunks → insert `[m:ss] ` timestamp anchor at the notes caret.
+- Slash-command menu (`/`) → insert `> [!action]` / `> [!decision]` / `> [!question]` / `> [!note]` callouts.
 - Empty / listening / error states for the transcript pane.
+- Promote `TranscriptionManager.savedChunks` to `@Published [LiveTranscriptChunk]`.
 - Removal of `LiveNotesPanel.swift` and the inline `notesEditor` body in `RecordingModeView`.
-- Unit tests for `MarkdownStyler`.
+- Unit tests for `MarkdownStyler` and the slash-command insertion / timestamp-insertion logic.
 - Manual test plan documented (below).
 
-### Deferred to Phase 2 (NOT in this spec)
+### Out of scope (intentional)
 
-- Click-a-transcript-line to anchor a timestamp into notes.
-- Slash commands (`/action`, `/decision`, `/question`).
-- AI chat aware of "what I just noted" beyond the existing `meetingNotes` already passed to the system message.
-- Hide-syntax markdown editor (Notion-style).
-- Extending SFSpeechRecognizer past native session limits.
-- Custom waveform visualization in the top bar (the existing `WaveformBars` component may be repurposed if desired, but the level-dots indicator is the Phase 1 plan).
+- **Hide-syntax markdown editor** (Notion-style) — alternative design choice, not an additional feature.
+- **Extending SFSpeechRecognizer past native session limits** — already handled by the rolling `savedChunks` buffer; not user-visible.
+- **AI chat awareness of notes** — already done; `MeetingContextBuilder` passes `appState.meetingNotes` into the chat system message (`RecordingModeView.swift:224`).
+- **Custom waveform in the top bar** — cosmetic; the 5-dot level indicator is sufficient.
 
 ### Pre-recording phase
 
@@ -264,8 +293,21 @@ Out of scope. The pre-recording phase (`preRecordingPhase` in `RecordingModeView
 - `*italic*` does not match `**bold**` (precedence handled).
 - Bulleted list line gets list-paragraph attributes; nested levels (two spaces of indent) increment indent.
 - Checkbox glyphs render: `[ ]` → ☐, `[x]` → ☑.
+- Callout markers `> [!action] body` apply chip background + body indent; the four callout types map to the right colors.
 - Editing a previously-styled line (e.g. removing a `#`) clears the heading attribute on that line.
 - Empty string, single newline, very long lines all return without crashing.
+
+`Tests/Recording/SlashCommandInsertionTests.swift`:
+
+- Selecting "Action" from the menu replaces the typed `/` with `> [!action] ` and positions the caret after the marker.
+- Esc dismisses the menu without modifying the text.
+- Typing `/` mid-line (not at line start) does not open the menu.
+
+`Tests/Recording/TimestampInsertionTests.swift`:
+
+- A click on a chunk with `startTime = 42.3` inserts the literal `[0:42] ` at the notes caret.
+- A click on a chunk with `startTime = 3725.0` inserts `[1:02:05] ` (HH:MM:SS format for >1h meetings).
+- Multiple clicks each insert at the current caret position; existing notes content is preserved.
 
 ### Manual test plan
 
@@ -274,12 +316,14 @@ Out of scope. The pre-recording phase (`preRecordingPhase` in `RecordingModeView
 3. Type `**bold text**` — bold renders.
 4. Type `- item one\n- item two` — bullet rendering applied.
 5. Type `[ ] task` — checkbox glyph appears.
-6. Toggle transcript ON. Right pane animates in. Speak briefly. Live text appears.
-7. Toggle transcript OFF. Pane animates out, notes fills width. Recognizer stops (verify in Activity Monitor: CPU drop on the app).
-8. Open AI chat panel. Transcript pane (if visible) hides; chat panel takes right side. Notes column does not jump width unexpectedly.
-9. Close AI chat panel. Transcript pane returns if it was on.
-10. Stop recording. Verify `notes.md` saved with the markdown content (raw text, not attributed). Verify whisper transcription runs and saves `transcript.md`.
-11. Re-open the meeting from the dashboard. `meetingNotes` reload correctly into the styled editor (markdown rendering applied on load).
+6. Type `/` at line start — slash menu appears. Pick "Action" — line becomes `> [!action] ` with red ACTION chip.
+7. Toggle transcript ON. Right pane animates in. Speak briefly. Live text appears as clickable chunks with timestamps.
+8. Click a transcript chunk — `[m:ss] ` is inserted at the notes caret; focus returns to the notes editor.
+9. Toggle transcript OFF. Pane animates out, notes fills width. Recognizer stops (verify in Activity Monitor: CPU drop on the app).
+10. Open AI chat panel. Transcript pane (if visible) hides; chat panel takes right side. Notes column does not jump width unexpectedly.
+11. Close AI chat panel. Transcript pane returns if it was on.
+12. Stop recording. Verify `notes.md` saved with the markdown content (raw text including any `> [!action]` callouts and `[0:42]` timestamps, not attributed). Verify whisper transcription runs and saves `transcript.md`.
+13. Re-open the meeting from the dashboard. `meetingNotes` reload correctly into the styled editor (markdown rendering applied on load, callouts re-render as chips).
 
 ### Existing tests must still pass
 
@@ -294,11 +338,11 @@ The Swift Package's existing tests under `Tests/` (LLM, Storage, Permissions, No
 - Replacing `whisper.cpp` post-processing — the live transcript is a *preview*, not a substitute for the canonical post-recording transcript.
 - Changing the post-recording phase or the dashboard meeting list.
 
-## Open questions for review
+## Resolved decisions
 
-1. **Default = OFF** — is this the right starting state, or should we change `liveTranscriptEnabled` default to ON to make the split layout the first-run experience? (Code comment cites CPU/quality concerns; recommendation: keep default OFF.)
-2. **Title editability during recording** — should the title field be editable mid-recording, or read-only? (Current code allows editing. Recommendation: keep editable but make it less prominent — already addressed by the smaller font.)
-3. **Audio-level dots vs. waveform** — repurposing `WaveformBars` in the top bar is also viable. Recommendation: a compact 5-dot level indicator for simplicity. Open to either.
+- **Default = OFF** for `liveTranscriptEnabled`. First-launch shows focus mode; users opt into split mode. Persists via `@AppStorage`.
+- **Title remains editable mid-recording**, but visually de-emphasized (smaller, lighter font in the top bar).
+- **5-dot audio-level indicator** in the top bar, not a waveform.
 
 ---
 
