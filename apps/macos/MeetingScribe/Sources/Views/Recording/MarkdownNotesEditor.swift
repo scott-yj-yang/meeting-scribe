@@ -62,7 +62,7 @@ struct MarkdownNotesEditor: NSViewRepresentable {
     func makeCoordinator() -> Coordinator {
         let coord = Coordinator(self)
         if let ref = coordinatorRef {
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak coord] in
                 ref.wrappedValue = coord
             }
         }

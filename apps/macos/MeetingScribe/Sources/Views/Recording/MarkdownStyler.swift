@@ -16,11 +16,13 @@ enum MarkdownStyler {
         let fullRange = NSRange(location: 0, length: storage.length)
         guard fullRange.length > 0 else { return }
 
-        // Reset to body style across the full range.
+        // Reset to body style across the full range. Includes paragraphStyle
+        // so deleting a bullet/callout marker also clears the line's indent.
         let bodyFont = NSFont.systemFont(ofSize: bodyPointSize)
         storage.setAttributes([
             .font: bodyFont,
-            .foregroundColor: NSColor.labelColor
+            .foregroundColor: NSColor.labelColor,
+            .paragraphStyle: NSParagraphStyle()
         ], range: fullRange)
 
         // Walk lines and apply line-level attributes.

@@ -44,7 +44,7 @@ struct RecordingTopBar: View {
                 appState.toggleLiveTranscript()
             } label: {
                 HStack(spacing: 4) {
-                    Image(systemName: "text.alignleft")
+                    Image(systemName: appState.liveTranscriptEnabled ? "text.alignleft" : "text.alignleft.slash")
                     Text("Transcript")
                         .font(.caption.weight(.medium))
                     Text(appState.liveTranscriptEnabled ? "ON" : "OFF")
@@ -112,13 +112,6 @@ struct RecordingTopBar: View {
     }
 
     private func formatDuration(_ seconds: TimeInterval) -> String {
-        let total = Int(seconds)
-        let h = total / 3600
-        let m = (total % 3600) / 60
-        let s = total % 60
-        if h > 0 {
-            return String(format: "%d:%02d:%02d", h, m, s)
-        }
-        return String(format: "%d:%02d", m, s)
+        TimestampFormatter.format(seconds)
     }
 }
