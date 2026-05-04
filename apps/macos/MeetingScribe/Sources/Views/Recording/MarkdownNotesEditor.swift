@@ -59,9 +59,12 @@ struct MarkdownNotesEditor: NSViewRepresentable {
         Coordinator(self)
     }
 
+    @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: MarkdownNotesEditor
         weak var textView: NSTextView?
+        private let slashMenu = SlashCommandMenuController()
+        private var pendingSlashLocation: Int?
 
         init(_ parent: MarkdownNotesEditor) {
             self.parent = parent
@@ -72,10 +75,66 @@ struct MarkdownNotesEditor: NSViewRepresentable {
             if let storage = tv.textStorage {
                 MarkdownStyler.applyAttributes(to: storage)
             }
-            let newText = tv.string
-            DispatchQueue.main.async { [weak self] in
-                self?.parent.text = newText
+            detectSlashTrigger(in: tv)
+            parent.text = tv.string
+        }
+
+        /// Detects when the user just typed `/` at the start of a line and shows the slash menu.
+        private func detectSlashTrigger(in tv: NSTextView) {
+            let selected = tv.selectedRange()
+            guard selected.length == 0, selected.location > 0 else { return }
+            let nsString = tv.string as NSString
+            let charBefore = nsString.substring(with: NSRange(location: selected.location - 1, length: 1))
+            guard charBefore == "/" else { return }
+            // At line start? Either offset 0 or preceding char is newline.
+            let triggerLocation = selected.location - 1
+            let isLineStart: Bool = {
+                if triggerLocation == 0 { return true }
+                let prior = nsString.substring(with: NSRange(location: triggerLocation - 1, length: 1))
+                return prior == "\n"
+            }()
+            guard isLineStart else { return }
+            showSlashMenu(in: tv, triggerLocation: triggerLocation)
+        }
+
+        private func showSlashMenu(in tv: NSTextView, triggerLocation: Int) {
+            pendingSlashLocation = triggerLocation
+            // Convert text position to a screen point under the caret.
+            guard let layoutManager = tv.layoutManager,
+                  let textContainer = tv.textContainer else { return }
+            let glyphRange = layoutManager.glyphRange(forCharacterRange: NSRange(location: triggerLocation, length: 1), actualCharacterRange: nil)
+            let rect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+            let inView = NSRect(
+                x: rect.origin.x + tv.textContainerOrigin.x,
+                y: rect.origin.y + tv.textContainerOrigin.y + rect.height + 2,
+                width: rect.width, height: rect.height
+            )
+            let inWindow = tv.convert(inView, to: nil)
+            guard let window = tv.window else { return }
+            let onScreen = window.convertToScreen(inWindow)
+            let topLeft = NSPoint(x: onScreen.origin.x, y: onScreen.origin.y)
+
+            slashMenu.show(
+                anchoredTo: topLeft,
+                onSelect: { [weak self] command in
+                    self?.applySlashCommand(command, in: tv)
+                },
+                onCancel: { [weak self] in
+                    self?.pendingSlashLocation = nil
+                }
+            )
+        }
+
+        private func applySlashCommand(_ command: SlashCommand, in tv: NSTextView) {
+            guard let location = pendingSlashLocation else { return }
+            pendingSlashLocation = nil
+            let result = command.applyInsertion(into: tv.string, triggerSlashLocation: location)
+            tv.string = result.text
+            if let storage = tv.textStorage {
+                MarkdownStyler.applyAttributes(to: storage)
             }
+            tv.setSelectedRange(NSRange(location: result.caretLocation, length: 0))
+            parent.text = tv.string
         }
     }
 }
