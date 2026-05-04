@@ -52,7 +52,23 @@ struct RecordingModeView: View {
                     .foregroundStyle(.tertiary)
 
                 // Notes area
-                notesEditor
+                ZStack(alignment: .topLeading) {
+                    TextEditor(text: $appState.meetingNotes)
+                        .font(.body)
+                        .scrollContentBackground(.hidden)
+                        .padding(8)
+
+                    if appState.meetingNotes.isEmpty {
+                        Text("Add notes...")
+                            .font(.body)
+                            .foregroundStyle(.tertiary)
+                            .padding(.horizontal, 13)
+                            .padding(.vertical, 16)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .frame(maxWidth: 500, minHeight: 100, maxHeight: 200)
+                .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
 
                 // Start button
                 Button {
@@ -75,65 +91,8 @@ struct RecordingModeView: View {
 
     private var recordingPhase: some View {
         HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                Spacer()
-
-                VStack(spacing: 24) {
-                    // Recording indicator
-                    HStack(spacing: 8) {
-                        Circle()
-                            .fill(.red)
-                            .frame(width: 10, height: 10)
-                        Text("Recording")
-                            .font(.headline)
-                            .foregroundStyle(.red)
-                        Text(formatDuration(appState.recordingDuration))
-                            .font(.system(.headline, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                    }
-
-                    // Editable title
-                    TextField("Untitled meeting", text: $appState.meetingTitle)
-                        .font(.system(size: 28, weight: .bold, design: .rounded))
-                        .textFieldStyle(.plain)
-                        .multilineTextAlignment(.center)
-
-                    // Calendar event badge
-                    if let event = appState.selectedCalendarEvent {
-                        HStack(spacing: 4) {
-                            Image(systemName: "link")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.blue.opacity(0.7))
-                            Text(event.title)
-                                .font(.subheadline)
-                                .foregroundStyle(.blue.opacity(0.7))
-                                .lineLimit(1)
-                        }
-                    }
-
-                    // Waveform visualization
-                    WaveformBars(level: appState.audioLevel, tint: .red)
-                        .frame(height: 24)
-
-                    // Notes area
-                    notesEditor
-
-                    // Stop button
-                    Button {
-                        appState.toggleRecording()
-                    } label: {
-                        Label("Stop Recording", systemImage: "stop.circle")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.red)
-                    .controlSize(.large)
-                }
-                .frame(maxWidth: 500)
-
-                Spacer()
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding()
+            RecordingWorkspace()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             if appState.showLiveChatPanel {
                 Divider()
@@ -406,39 +365,6 @@ struct RecordingModeView: View {
                 .buttonStyle(.plain)
             }
         }
-    }
-
-    private var notesEditor: some View {
-        ZStack(alignment: .topLeading) {
-            TextEditor(text: $appState.meetingNotes)
-                .font(.body)
-                .scrollContentBackground(.hidden)
-                .padding(8)
-
-            if appState.meetingNotes.isEmpty {
-                Text("Add notes...")
-                    .font(.body)
-                    .foregroundStyle(.tertiary)
-                    .padding(.horizontal, 13)
-                    .padding(.vertical, 16)
-                    .allowsHitTesting(false)
-            }
-        }
-        .frame(maxWidth: 500, minHeight: 100, maxHeight: 200)
-        .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
-    }
-
-    // MARK: - Helpers
-
-    private func formatDuration(_ seconds: TimeInterval) -> String {
-        let total = Int(seconds)
-        let h = total / 3600
-        let m = (total % 3600) / 60
-        let s = total % 60
-        if h > 0 {
-            return String(format: "%d:%02d:%02d", h, m, s)
-        }
-        return String(format: "%d:%02d", m, s)
     }
 
 }

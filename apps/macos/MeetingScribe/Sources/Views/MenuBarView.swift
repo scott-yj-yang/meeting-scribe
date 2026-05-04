@@ -5,6 +5,7 @@ struct MenuBarView: View {
     @Environment(\.openWindow) private var openWindow
     @State private var showSettings = false
     @State private var showTodaysMeetings = false
+    @State private var notesExpanded = false
 
     private enum Panel: Equatable {
         case main, settings, postRecording
@@ -424,9 +425,62 @@ struct MenuBarView: View {
                 .buttonStyle(.borderless)
             }
 
-            // Live notes
-            LiveNotesPanel(notes: $appState.meetingNotes)
-                .padding(.top, 4)
+            // Live notes (inlined from deleted LiveNotesPanel)
+            VStack(alignment: .leading, spacing: 4) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        notesExpanded.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 8, weight: .bold))
+                            .rotationEffect(.degrees(notesExpanded ? 90 : 0))
+                        Image(systemName: "note.text")
+                            .font(.system(size: 10))
+                        Text("Meeting Notes")
+                            .font(.system(size: 10, weight: .semibold))
+                        if !appState.meetingNotes.isEmpty {
+                            Circle()
+                                .fill(.blue)
+                                .frame(width: 5, height: 5)
+                        }
+                        Spacer()
+                        if !notesExpanded && !appState.meetingNotes.isEmpty {
+                            Text("\(appState.meetingNotes.split(separator: "\n").count) lines")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+
+                if notesExpanded {
+                    TextEditor(text: $appState.meetingNotes)
+                        .font(.system(.caption, design: .monospaced))
+                        .scrollContentBackground(.hidden)
+                        .padding(6)
+                        .frame(minHeight: 60, maxHeight: 120)
+                        .background(Color(.textBackgroundColor).opacity(0.5))
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                        )
+                        .overlay(alignment: .topLeading) {
+                            if appState.meetingNotes.isEmpty {
+                                Text("Questions, observations, action items...")
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundStyle(.tertiary)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 8)
+                                    .allowsHitTesting(false)
+                            }
+                        }
+                }
+            }
+            .padding(.top, 4)
 
             // Stop button
             Button {

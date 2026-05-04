@@ -9,6 +9,10 @@ import AppKit
 /// follow-up tasks.
 struct MarkdownNotesEditor: NSViewRepresentable {
     @Binding var text: String
+    /// Optional outbound binding so parents can hold a reference to the
+    /// coordinator and call `insertAtCaret(_:)` from external views (e.g.
+    /// the transcript pane click handler).
+    var coordinatorRef: Binding<Coordinator?>? = nil
 
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSScrollView()
@@ -56,7 +60,13 @@ struct MarkdownNotesEditor: NSViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(self)
+        let coord = Coordinator(self)
+        if let ref = coordinatorRef {
+            DispatchQueue.main.async {
+                ref.wrappedValue = coord
+            }
+        }
+        return coord
     }
 
     @MainActor
