@@ -45,8 +45,33 @@ enum MarkdownStyler {
             let size: CGFloat = level == 1 ? 22 : (level == 2 ? 18 : 15)
             let font = NSFont.boldSystemFont(ofSize: size)
             storage.addAttribute(.font, value: font, range: lineRange)
+        } else if isBullet(lineText) {
+            applyBulletParagraph(in: lineRange, storage: storage)
+        } else if let checkbox = checkboxState(of: lineText), lineRange.length >= 3 {
+            let markerRange = NSRange(location: lineRange.location, length: 3)
+            let color: NSColor = checkbox ? .systemGreen : .controlAccentColor
+            storage.addAttribute(.foregroundColor, value: color, range: markerRange)
+        } else if lineText.hasPrefix("> ") {
+            storage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: lineRange)
         }
         applyInline(in: lineRange, storage: storage, lineText: lineText)
+    }
+
+    private static func isBullet(_ line: String) -> Bool {
+        return line.hasPrefix("- ") || line.hasPrefix("* ")
+    }
+
+    /// Returns true if the line begins with `[x]`, false if `[ ]`, nil otherwise.
+    private static func checkboxState(of line: String) -> Bool? {
+        if line.hasPrefix("[x] ") || line.hasPrefix("[X] ") { return true }
+        if line.hasPrefix("[ ] ") { return false }
+        return nil
+    }
+
+    private static func applyBulletParagraph(in lineRange: NSRange, storage: NSMutableAttributedString) {
+        let style = NSMutableParagraphStyle()
+        style.headIndent = 16
+        storage.addAttribute(.paragraphStyle, value: style, range: lineRange)
     }
 
     // MARK: - Inline patterns

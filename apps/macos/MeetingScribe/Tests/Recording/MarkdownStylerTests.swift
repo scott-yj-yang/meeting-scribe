@@ -110,3 +110,44 @@ struct MarkdownStylerInlineTests {
         #expect(font?.isFixedPitch == true)
     }
 }
+
+@Suite("MarkdownStyler — line-start patterns")
+struct MarkdownStylerLineStartTests {
+
+    @Test("- bullet line gets head indent")
+    func bulletIndent() {
+        let storage = NSMutableAttributedString(string: "- item one")
+        MarkdownStyler.applyAttributes(to: storage)
+        let attrs = storage.attributes(at: 0, effectiveRange: nil)
+        let style = attrs[.paragraphStyle] as? NSParagraphStyle
+        #expect(style != nil)
+        #expect((style?.headIndent ?? 0) > 0)
+    }
+
+    @Test("[ ] empty checkbox is detected")
+    func emptyCheckbox() {
+        let storage = NSMutableAttributedString(string: "[ ] task")
+        MarkdownStyler.applyAttributes(to: storage)
+        let attrs = storage.attributes(at: 0, effectiveRange: nil)
+        let color = attrs[.foregroundColor] as? NSColor
+        #expect(color == NSColor.controlAccentColor)
+    }
+
+    @Test("[x] checked checkbox is detected")
+    func checkedCheckbox() {
+        let storage = NSMutableAttributedString(string: "[x] done")
+        MarkdownStyler.applyAttributes(to: storage)
+        let attrs = storage.attributes(at: 0, effectiveRange: nil)
+        let color = attrs[.foregroundColor] as? NSColor
+        #expect(color == NSColor.systemGreen)
+    }
+
+    @Test("> blockquote line gets secondary color")
+    func blockquoteColor() {
+        let storage = NSMutableAttributedString(string: "> quoted text")
+        MarkdownStyler.applyAttributes(to: storage)
+        let attrs = storage.attributes(at: 2, effectiveRange: nil)
+        let color = attrs[.foregroundColor] as? NSColor
+        #expect(color == NSColor.secondaryLabelColor)
+    }
+}
