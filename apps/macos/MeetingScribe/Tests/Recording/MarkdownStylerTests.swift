@@ -151,3 +151,43 @@ struct MarkdownStylerLineStartTests {
         #expect(color == NSColor.secondaryLabelColor)
     }
 }
+
+@Suite("MarkdownStyler — callouts")
+struct MarkdownStylerCalloutTests {
+
+    @Test("> [!action] line gets red chip background on the marker")
+    func actionCallout() {
+        let storage = NSMutableAttributedString(string: "> [!action] ship onboarding Friday")
+        MarkdownStyler.applyAttributes(to: storage)
+        let attrs = storage.attributes(at: 2, effectiveRange: nil)
+        let bg = attrs[.backgroundColor] as? NSColor
+        #expect(bg == NSColor.systemRed.withAlphaComponent(0.15))
+    }
+
+    @Test("> [!decision] gets green chip")
+    func decisionCallout() {
+        let storage = NSMutableAttributedString(string: "> [!decision] approved")
+        MarkdownStyler.applyAttributes(to: storage)
+        let attrs = storage.attributes(at: 2, effectiveRange: nil)
+        let bg = attrs[.backgroundColor] as? NSColor
+        #expect(bg == NSColor.systemGreen.withAlphaComponent(0.15))
+    }
+
+    @Test("> [!question] gets blue chip")
+    func questionCallout() {
+        let storage = NSMutableAttributedString(string: "> [!question] what about Q3?")
+        MarkdownStyler.applyAttributes(to: storage)
+        let attrs = storage.attributes(at: 2, effectiveRange: nil)
+        let bg = attrs[.backgroundColor] as? NSColor
+        #expect(bg == NSColor.systemBlue.withAlphaComponent(0.15))
+    }
+
+    @Test("> [!note] gets gray chip")
+    func noteCallout() {
+        let storage = NSMutableAttributedString(string: "> [!note] reminder")
+        MarkdownStyler.applyAttributes(to: storage)
+        let attrs = storage.attributes(at: 2, effectiveRange: nil)
+        let bg = attrs[.backgroundColor] as? NSColor
+        #expect(bg == NSColor.systemGray.withAlphaComponent(0.15))
+    }
+}

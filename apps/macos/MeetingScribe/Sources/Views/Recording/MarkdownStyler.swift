@@ -52,7 +52,11 @@ enum MarkdownStyler {
             let color: NSColor = checkbox ? .systemGreen : .controlAccentColor
             storage.addAttribute(.foregroundColor, value: color, range: markerRange)
         } else if lineText.hasPrefix("> ") {
-            storage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: lineRange)
+            if let callout = calloutKind(of: lineText) {
+                applyCallout(callout, lineRange: lineRange, lineText: lineText, storage: storage)
+            } else {
+                storage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: lineRange)
+            }
         }
         applyInline(in: lineRange, storage: storage, lineText: lineText)
     }
@@ -71,6 +75,43 @@ enum MarkdownStyler {
     private static func applyBulletParagraph(in lineRange: NSRange, storage: NSMutableAttributedString) {
         let style = NSMutableParagraphStyle()
         style.headIndent = 16
+        storage.addAttribute(.paragraphStyle, value: style, range: lineRange)
+    }
+
+    enum CalloutKind: String {
+        case action, decision, question, note
+
+        var color: NSColor {
+            switch self {
+            case .action: return .systemRed
+            case .decision: return .systemGreen
+            case .question: return .systemBlue
+            case .note: return .systemGray
+            }
+        }
+    }
+
+    private static func calloutKind(of line: String) -> CalloutKind? {
+        // Expect "> [!<kind>] <body>"
+        guard line.hasPrefix("> [!") else { return nil }
+        let afterPrefix = line.dropFirst(4) // after "> [!"
+        guard let closeIdx = afterPrefix.firstIndex(of: "]") else { return nil }
+        let kindString = String(afterPrefix[..<closeIdx])
+        return CalloutKind(rawValue: kindString)
+    }
+
+    private static func applyCallout(_ kind: CalloutKind, lineRange: NSRange, lineText: String, storage: NSMutableAttributedString) {
+        // Marker is "[!<kind>]" — locate within lineText.
+        let nsLine = lineText as NSString
+        let markerInLine = nsLine.range(of: "[!\(kind.rawValue)]")
+        guard markerInLine.location != NSNotFound else { return }
+        let markerInStorage = NSRange(location: lineRange.location + markerInLine.location, length: markerInLine.length)
+        storage.addAttribute(.backgroundColor, value: kind.color.withAlphaComponent(0.15), range: markerInStorage)
+        storage.addAttribute(.foregroundColor, value: kind.color, range: markerInStorage)
+
+        // Body of the line gets a slight indent — apply paragraph style.
+        let style = NSMutableParagraphStyle()
+        style.headIndent = 12
         storage.addAttribute(.paragraphStyle, value: style, range: lineRange)
     }
 
