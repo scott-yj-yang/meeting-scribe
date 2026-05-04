@@ -136,5 +136,23 @@ struct MarkdownNotesEditor: NSViewRepresentable {
             tv.setSelectedRange(NSRange(location: result.caretLocation, length: 0))
             parent.text = tv.string
         }
+
+        /// Public API for external views (e.g. `LiveTranscriptPane`) to insert
+        /// text at the current caret position. Re-styles after the insert.
+        func insertAtCaret(_ string: String) {
+            guard let tv = textView else { return }
+            let selected = tv.selectedRange()
+            let nsString = tv.string as NSString
+            let mutable = NSMutableString(string: nsString)
+            mutable.replaceCharacters(in: selected, with: string)
+            tv.string = mutable as String
+            if let storage = tv.textStorage {
+                MarkdownStyler.applyAttributes(to: storage)
+            }
+            let caret = selected.location + (string as NSString).length
+            tv.setSelectedRange(NSRange(location: caret, length: 0))
+            tv.window?.makeFirstResponder(tv)
+            parent.text = tv.string
+        }
     }
 }

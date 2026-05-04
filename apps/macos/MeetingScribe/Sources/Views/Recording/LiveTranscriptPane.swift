@@ -7,6 +7,7 @@ import SwiftUI
 struct LiveTranscriptPane: View {
     @ObservedObject var transcriptionManager: TranscriptionManager
     let liveTranscriptError: String?
+    let onChunkClick: (LiveTranscriptChunk) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -69,7 +70,14 @@ struct LiveTranscriptPane: View {
     }
 
     private func chunkRow(chunk: LiveTranscriptChunk, isInFlight: Bool) -> some View {
-        chunkRow(text: chunk.text, timestampLabel: TimestampFormatter.format(chunk.startTime), isInFlight: isInFlight)
+        Button {
+            onChunkClick(chunk)
+        } label: {
+            chunkRow(text: chunk.text, timestampLabel: TimestampFormatter.format(chunk.startTime), isInFlight: isInFlight)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Click to insert [\(TimestampFormatter.format(chunk.startTime))] into notes")
     }
 
     private func chunkRow(text: String, timestampLabel: String, isInFlight: Bool) -> some View {
