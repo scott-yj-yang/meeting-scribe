@@ -38,6 +38,9 @@ struct MarkdownNotesEditor: NSViewRepresentable {
 
         // Initial text load
         textView.string = text
+        if let storage = textView.textStorage {
+            MarkdownStyler.applyAttributes(to: storage)
+        }
 
         return scroll
     }
@@ -46,6 +49,9 @@ struct MarkdownNotesEditor: NSViewRepresentable {
         guard let textView = nsView.documentView as? NSTextView else { return }
         if textView.string != text {
             textView.string = text
+            if let storage = textView.textStorage {
+                MarkdownStyler.applyAttributes(to: storage)
+            }
         }
     }
 
@@ -63,6 +69,9 @@ struct MarkdownNotesEditor: NSViewRepresentable {
 
         func textDidChange(_ notification: Notification) {
             guard let tv = notification.object as? NSTextView else { return }
+            if let storage = tv.textStorage {
+                MarkdownStyler.applyAttributes(to: storage)
+            }
             let newText = tv.string
             DispatchQueue.main.async { [weak self] in
                 self?.parent.text = newText
