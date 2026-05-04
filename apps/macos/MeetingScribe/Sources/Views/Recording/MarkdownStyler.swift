@@ -46,6 +46,55 @@ enum MarkdownStyler {
             let font = NSFont.boldSystemFont(ofSize: size)
             storage.addAttribute(.font, value: font, range: lineRange)
         }
+        applyInline(in: lineRange, storage: storage, lineText: lineText)
+    }
+
+    // MARK: - Inline patterns
+
+    private static let boldRegex = try! NSRegularExpression(pattern: #"\*\*(.+?)\*\*"#)
+    private static let italicAsteriskRegex = try! NSRegularExpression(pattern: #"(?<![*\w])\*(?!\*)([^*\n]+?)\*(?!\*)"#)
+    private static let italicUnderscoreRegex = try! NSRegularExpression(pattern: #"(?<![_\w])_([^_\n]+?)_(?![_\w])"#)
+    private static let codeRegex = try! NSRegularExpression(pattern: #"`([^`\n]+?)`"#)
+
+    private static func applyInline(in lineRange: NSRange, storage: NSMutableAttributedString, lineText: String) {
+        // Apply in this order: code (claims monospaced), bold (** before *), italic.
+        applyMatches(codeRegex, in: lineRange, against: lineText) { innerRange in
+            let mono = NSFont.monospacedSystemFont(ofSize: bodyPointSize, weight: .regular)
+            storage.addAttribute(.font, value: mono, range: innerRange)
+            storage.addAttribute(.backgroundColor, value: NSColor.quaternaryLabelColor, range: innerRange)
+        }
+        applyMatches(boldRegex, in: lineRange, against: lineText) { innerRange in
+            applyTrait(.bold, in: innerRange, storage: storage)
+        }
+        applyMatches(italicAsteriskRegex, in: lineRange, against: lineText) { innerRange in
+            applyTrait(.italic, in: innerRange, storage: storage)
+        }
+        applyMatches(italicUnderscoreRegex, in: lineRange, against: lineText) { innerRange in
+            applyTrait(.italic, in: innerRange, storage: storage)
+        }
+    }
+
+    /// Runs a regex against `lineText` and calls `apply` with the *inner*
+    /// (capture group 1) range translated back to the full storage range.
+    private static func applyMatches(_ regex: NSRegularExpression, in lineRange: NSRange, against lineText: String, apply: (NSRange) -> Void) {
+        let lineFullRange = NSRange(location: 0, length: (lineText as NSString).length)
+        regex.enumerateMatches(in: lineText, range: lineFullRange) { match, _, _ in
+            guard let match = match, match.numberOfRanges >= 2 else { return }
+            let innerInLine = match.range(at: 1)
+            let innerInStorage = NSRange(location: lineRange.location + innerInLine.location, length: innerInLine.length)
+            apply(innerInStorage)
+        }
+    }
+
+    private static func applyTrait(_ trait: NSFontDescriptor.SymbolicTraits, in range: NSRange, storage: NSMutableAttributedString) {
+        storage.enumerateAttribute(.font, in: range) { value, subrange, _ in
+            let base = (value as? NSFont) ?? NSFont.systemFont(ofSize: bodyPointSize)
+            var traits = base.fontDescriptor.symbolicTraits
+            traits.insert(trait)
+            let descriptor = base.fontDescriptor.withSymbolicTraits(traits)
+            let merged = NSFont(descriptor: descriptor, size: base.pointSize) ?? base
+            storage.addAttribute(.font, value: merged, range: subrange)
+        }
     }
 
     /// Returns 1, 2, or 3 if the line begins with `# `, `## `, or `### ` respectively. Otherwise nil.
