@@ -12,10 +12,14 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
     private var recognitionTask: SFSpeechRecognitionTask?
     private var recordingStartTime = Date()
 
-    // All saved text chunks (one per recognition session, ~1 min each)
-    private var savedChunks: [(text: String, time: TimeInterval)] = []
-    // Current session's cumulative text (grows as recognizer returns partials)
-    private var currentSessionText: String = ""
+    /// All finalized chunks from past recognition sessions. Published so
+    /// `LiveTranscriptPane` can render them reactively. Each chunk's
+    /// `startTime` is the previous chunk's `endTime` (or 0 for the first).
+    @Published private(set) var liveChunks: [LiveTranscriptChunk] = []
+    /// The current (not-yet-finalized) recognition session's cumulative text.
+    /// Published so `LiveTranscriptPane` can render it as a tentative trailing
+    /// chunk that updates live with partial results.
+    @Published private(set) var currentSessionText: String = ""
     private var bufferCount = 0
     private var isRestarting = false
     private var isActive = false
@@ -23,7 +27,7 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
     func setup() async throws {
         recordingStartTime = Date()
         segments.removeAll()
-        savedChunks.removeAll()
+        liveChunks.removeAll()
         currentSessionText = ""
         liveText = ""
         bufferCount = 0
@@ -98,19 +102,17 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
 
         // Convert all chunks to segments
         segments.removeAll()
-        var lastEnd: TimeInterval = 0
-        for chunk in savedChunks {
+        for chunk in liveChunks {
             let segment = TranscriptSegment(
                 speaker: "Speaker",
                 text: chunk.text,
-                startTime: lastEnd,
-                endTime: chunk.time
+                startTime: chunk.startTime,
+                endTime: chunk.endTime
             )
             segments.append(segment)
-            lastEnd = chunk.time
         }
 
-        print("[Transcription] Finalized \(segments.count) segments from \(savedChunks.count) chunks")
+        print("[Transcription] Finalized \(segments.count) segments from \(liveChunks.count) chunks")
         for (i, seg) in segments.enumerated() {
             print("[Transcription]   #\(i+1): \"\(seg.text.prefix(100))\"")
         }
@@ -129,7 +131,7 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
         recognitionRequest = nil
         recognizer = nil
         segments.removeAll()
-        savedChunks.removeAll()
+        liveChunks.removeAll()
         currentSessionText = ""
         liveText = ""
         bufferCount = 0
@@ -142,8 +144,9 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
         guard !text.isEmpty else { return }
 
         let elapsed = Date().timeIntervalSince(recordingStartTime)
-        savedChunks.append((text: text, time: elapsed))
-        print("[Transcription] Saved chunk #\(savedChunks.count): \"\(text.prefix(100))\"")
+        let startTime = liveChunks.last?.endTime ?? 0
+        liveChunks.append(LiveTranscriptChunk(text: text, startTime: startTime, endTime: elapsed))
+        print("[Transcription] Saved chunk #\(liveChunks.count): \"\(text.prefix(100))\"")
         currentSessionText = ""
         // Recompute preview so it still reflects all saved chunks — do NOT wipe to "".
         // Wiping would leave mid-meeting chat with no transcript during the 300ms
@@ -194,7 +197,7 @@ final class TranscriptionManager: ObservableObject, @unchecked Sendable {
 
     /// Show all saved text + current live text
     private func fullTranscriptPreview() -> String {
-        let saved = savedChunks.map(\.text).joined(separator: " ")
+        let saved = liveChunks.map(\.text).joined(separator: " ")
         if saved.isEmpty {
             return currentSessionText
         }
