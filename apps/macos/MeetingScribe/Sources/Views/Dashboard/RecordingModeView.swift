@@ -102,28 +102,6 @@ struct RecordingModeView: View {
             }
         }
         .animation(.easeInOut(duration: 0.25), value: appState.showLiveChatPanel)
-        .overlay(alignment: .topTrailing) {
-            if !appState.showLiveChatPanel {
-                Button {
-                    appState.openLiveChatPanel()
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "bubble.left.and.bubble.right.fill")
-                        Text("Ask AI")
-                    }
-                    .font(.system(.callout, design: .rounded, weight: .medium))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Capsule().fill(Color.blue))
-                    .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
-                }
-                .buttonStyle(.plain)
-                .clickableHover(cornerRadius: 22)
-                .padding(16)
-                .transition(.opacity.combined(with: .scale))
-            }
-        }
     }
 
     // MARK: - Live Chat Panel

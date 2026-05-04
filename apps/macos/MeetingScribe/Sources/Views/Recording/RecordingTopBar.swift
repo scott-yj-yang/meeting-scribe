@@ -60,6 +60,25 @@ struct RecordingTopBar: View {
             .buttonStyle(.plain)
             .help(appState.liveTranscriptEnabled ? "Hide live transcript" : "Show live transcript")
 
+            // Ask AI — opens the live chat panel (only when not already open)
+            if !appState.showLiveChatPanel {
+                Button {
+                    appState.openLiveChatPanel()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "bubble.left.and.bubble.right.fill")
+                        Text("Ask AI")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .foregroundStyle(.white)
+                    .background(Capsule().fill(Color.blue))
+                }
+                .buttonStyle(.plain)
+                .help("Ask the AI about this meeting")
+            }
+
             // Audio level dots
             audioLevelDots
 
