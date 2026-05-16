@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "MeetingScribe",
-    platforms: [.macOS(.v15)],
+    platforms: [.macOS(.v14)],
     dependencies: [
         .package(url: "https://github.com/gonzalezreal/swift-markdown-ui.git", from: "2.4.0"),
     ],
