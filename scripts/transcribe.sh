@@ -57,7 +57,7 @@ while [[ $# -gt 0 ]]; do
             echo "Options:"
             echo "  --title     Meeting title (default: derived from filename)"
             echo "  --type      Meeting type: standup, 1on1, planning, retro, sales"
-            echo "  --summarize Run Claude Code summarization after upload"
+            echo "  --summarize Print hand-off instructions for summarizing in Claude Code"
             exit 0
             ;;
         -*) echo "Unknown option: $1"; exit 1 ;;
@@ -412,21 +412,15 @@ if [[ "$HTTP_CODE" == "201" ]]; then
     echo -e "${GREEN}Uploaded! Meeting ID: $MEETING_ID${NC}"
     echo -e "${GREEN}View at: $API_URL/meetings/$MEETING_ID${NC}"
 
-    # --- Optional: Summarize ---
+    # --- Optional: Summarization hand-off ---
     if $DO_SUMMARIZE; then
-        echo -e "${BLUE}Running Claude Code summarization...${NC}"
-        PROMPTS_DIR="${MEETINGSCRIBE_PROMPTS_DIR:-$(dirname "$SCRIPT_DIR")/prompts}"
-        if [[ -f "$PROMPTS_DIR/summarize.md" ]]; then
-            ABS_MD_FILE="$(cd "$(dirname "$MD_FILE")" && pwd)/$(basename "$MD_FILE")"
-            FULL_PROMPT="$(cat "$PROMPTS_DIR/summarize.md")
-
-The meeting transcript file is located at: $ABS_MD_FILE
-Please read that file and produce the summary."
-            claude --allowedTools "Read" -p "$FULL_PROMPT"
-        else
-            echo -e "${YELLOW}Prompt template not found at $PROMPTS_DIR/summarize.md${NC}"
-            echo "Run manually: meetingctl summarize $MEETING_ID"
-        fi
+        ABS_MD_DIR="$(cd "$(dirname "$MD_FILE")" && pwd)"
+        echo ""
+        echo -e "${BLUE}To summarize this meeting:${NC}"
+        echo "  cd \"$ABS_MD_DIR\""
+        echo "  claude   # then run: /summarize"
+        echo ""
+        echo "Or open the meeting in the MeetingScribe macOS app and click 'Open in Claude Code'."
     fi
 else
     echo -e "${YELLOW}Upload failed (HTTP $HTTP_CODE). Transcript saved locally at: $MD_FILE${NC}"

@@ -26,14 +26,12 @@ protocol LLMProvider {
 }
 
 enum LLMProviderKind: String, CaseIterable, Identifiable, Codable {
-    case claudeCLI = "claude_cli"
     case ollama = "ollama"
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .claudeCLI: return "Claude CLI"
         case .ollama: return "Ollama (local)"
         }
     }

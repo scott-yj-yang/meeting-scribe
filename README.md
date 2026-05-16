@@ -48,7 +48,7 @@ A self-hosted, privacy-first meeting transcription and summary system for macOS.
 3. Click "Stop" → ffmpeg merges audio streams with alignment correction
 4. whisper.cpp transcribes the merged audio on-device (with progress bar + ETA)
 5. Transcript saved locally as markdown under `~/MeetingScribe/YYYY/MM-Month/DD-slug/`
-6. Summarize with Claude Code or Ollama, right from the meeting panel
+6. Click "Open in Claude Code" to summarize via `/summarize`, or run Ollama locally for an automatic summary
 
 ## Setup
 
@@ -58,10 +58,17 @@ A self-hosted, privacy-first meeting transcription and summary system for macOS.
 - A whisper model, e.g. `ggml-base.en.bin` (see `scripts/download-model.sh`)
 
 ### Optional: summarization
-Choose one:
 
-- **Claude CLI** (default): `npm install -g @anthropic-ai/claude-code`
-- **Ollama** (local, no API key): `./scripts/install-ollama.sh`
+Two ways to get a summary:
+
+- **Claude Code (recommended)** — every meeting folder ships with a `CLAUDE.md`
+  and a `/summarize` slash command. From the macOS app, click "Open in Claude
+  Code"; the meeting folder opens in Finder. Then `cd` there, run `claude`,
+  and type `/summarize`. The summary panel reloads automatically as soon as
+  Claude writes `summary.md`.
+- **Ollama (fully local, automatic)**: `./scripts/install-ollama.sh` —
+  click "Summarize with Ollama" in the panel for an automatic in-app summary,
+  no API key needed.
 
 ### Build and run the Swift app
 ```bash

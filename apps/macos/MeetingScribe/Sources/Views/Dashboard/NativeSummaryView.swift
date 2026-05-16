@@ -24,11 +24,12 @@ struct NativeSummaryView: View {
     @State private var lastSavedText = ""
     @State private var saveTask: Task<Void, Never>?
     @StateObject private var llmSettings = LLMSettings()
-    @State private var currentClaudeProvider: ClaudeCLIProvider?
+    @State private var watcher: SummaryFileWatcher?
 
     private let templates = [
         ("default", "General Meeting"),
         ("one-on-one", "1:1 Meeting"),
+        ("subgroup", "Subgroup Meeting"),
         ("standup", "Daily Standup"),
         ("planning", "Sprint Planning"),
         ("retro", "Retrospective"),
@@ -66,7 +67,11 @@ struct NativeSummaryView: View {
                         Picker("Template", selection: $selectedTemplate) {
                             ForEach(templates, id: \.0) { id, label in Text(label).tag(id) }
                         }.pickerStyle(.menu).frame(width: 200)
-                        Button("Resummarize") { runSummarization() }.buttonStyle(.bordered)
+                        Button("Open in Claude Code") { revealInFinder() }
+                            .buttonStyle(.bordered)
+                        if providerAvailable {
+                            Button("Resummarize with Ollama") { runSummarization() }.buttonStyle(.bordered)
+                        }
                         Spacer()
                         if summaryText != lastSavedText {
                             Text("Unsaved")
@@ -86,16 +91,26 @@ struct NativeSummaryView: View {
                 VStack(spacing: 16) {
                     Image(systemName: "doc.text.magnifyingglass").font(.system(size: 40)).foregroundStyle(.tertiary)
                     Text("No summary yet").font(.headline).foregroundStyle(.secondary)
-                    Picker("Template", selection: $selectedTemplate) {
-                        ForEach(templates, id: \.0) { id, label in Text(label).tag(id) }
-                    }.pickerStyle(.menu).frame(width: 200)
-                    Button("Summarize with Claude") { runSummarization() }
-                        .buttonStyle(.borderedProminent).controlSize(.large)
-                        .disabled(!providerAvailable)
-                    if !providerAvailable {
-                        Text("\(llmSettings.providerKind.displayName) not available — check Settings (Cmd-,)")
+
+                    VStack(spacing: 8) {
+                        Button("Open in Claude Code") { revealInFinder() }
+                            .buttonStyle(.borderedProminent).controlSize(.large)
+                        Text("Reveals the meeting folder. Open it in Claude Code and run `/summarize` — the summary will load here automatically.")
                             .font(.caption)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: 360)
+                    }
+
+                    if providerAvailable {
+                        Divider().frame(maxWidth: 280)
+                        VStack(spacing: 8) {
+                            Picker("Template", selection: $selectedTemplate) {
+                                ForEach(templates, id: \.0) { id, label in Text(label).tag(id) }
+                            }.pickerStyle(.menu).frame(width: 200)
+                            Button("Summarize with Ollama (local)") { runSummarization() }
+                                .buttonStyle(.bordered)
+                        }
                     }
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -103,12 +118,15 @@ struct NativeSummaryView: View {
                 Text(error).font(.caption).foregroundStyle(.red).padding(.horizontal)
             }
         }
-        .onAppear { loadSummary() }
+        .onAppear {
+            loadSummary()
+            startWatching()
+        }
+        .onDisappear { watcher = nil }
     }
 
     private var providerAvailable: Bool {
         switch llmSettings.providerKind {
-        case .claudeCLI: return ClaudeCLIProvider.isInstalled
         case .ollama: return true  // best-effort; errors surface when invoked
         }
     }
@@ -117,6 +135,27 @@ struct NativeSummaryView: View {
         guard let dir = meeting.directoryURL else { return }
         summaryText = (try? String(contentsOf: dir.appendingPathComponent("summary.md"), encoding: .utf8)) ?? ""
         lastSavedText = summaryText
+    }
+
+    /// Watch the meeting folder for changes to summary.md so an external editor
+    /// (Claude Code, VS Code, plain `vim`) can write the file and the UI picks
+    /// it up live. We watch the directory rather than the file because the file
+    /// may not exist yet, and atomic-write tools (which most editors use) rename
+    /// a temp file over the target — that fires a directory event but not a
+    /// stable per-file event.
+    private func startWatching() {
+        guard let dir = meeting.directoryURL else { return }
+        watcher = SummaryFileWatcher(directory: dir) { [self] in
+            // Skip reload if user is mid-edit and has unsaved changes — don't
+            // clobber their typing with a stale on-disk version.
+            if summaryText != lastSavedText { return }
+            loadSummary()
+        }
+    }
+
+    private func revealInFinder() {
+        guard let dir = meeting.directoryURL else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([dir])
     }
 
     private func scheduleSave(_ text: String) {
@@ -157,30 +196,24 @@ struct NativeSummaryView: View {
                     kind: kind,
                     endpoint: endpoint,
                     model: model,
-                    template: template,
-                    registerClaude: { provider in
-                        currentClaudeProvider = provider
-                    }
+                    template: template
                 )
                 await MainActor.run {
                     if cancelRequested {
                         cancelRequested = false
                         streamStore.reset()
                         isLoading = false
-                        currentClaudeProvider = nil
                         return
                     }
                     summaryText = result
                     lastSavedText = result
                     isLoading = false
-                    currentClaudeProvider = nil
                     try? result.write(to: dir.appendingPathComponent("summary.md"), atomically: true, encoding: .utf8)
                 }
             } catch {
                 await MainActor.run {
                     self.error = error.localizedDescription
                     isLoading = false
-                    currentClaudeProvider = nil
                 }
             }
         }
@@ -192,8 +225,7 @@ struct NativeSummaryView: View {
         kind: LLMProviderKind,
         endpoint: String,
         model: String,
-        template: String,
-        registerClaude: @Sendable @MainActor (ClaudeCLIProvider) -> Void
+        template: String
     ) async throws -> String {
         // Route streaming deltas through a @Sendable callback that hops to MainActor.
         // DispatchQueue.main.async guarantees FIFO ordering (unlike unstructured MainActor
@@ -208,28 +240,10 @@ struct NativeSummaryView: View {
             }
         }
 
-        // Build provider in nonisolated context so the existential is not main-actor-isolated.
-        // `ClaudeCLIProvider` conforms to `@unchecked Sendable` with an NSLock guarding
-        // its internal process reference, so it can be passed across isolation boundaries
-        // safely — no `nonisolated(unsafe)` needed.
         let provider: LLMProvider
         switch kind {
-        case .claudeCLI:
-            let p = ClaudeCLIProvider()
-            await registerClaude(p)
-            provider = p
         case .ollama:
             provider = OllamaProvider(endpoint: endpoint, model: model)
-        }
-
-        // Claude CLI has a 200K+ token context window — send the entire
-        // transcript in a single pass. Chunking would actively hurt quality:
-        // each chunk loses the full meeting context, speaker attribution
-        // gets fragmented across boundaries, and the final "synthesize
-        // summaries of summaries" pass is lossy on top of lossy. Only chunk
-        // for local providers (Ollama) where context windows are smaller.
-        if kind == .claudeCLI {
-            return try await provider.summarize(transcript: transcript, template: template, onToken: onToken)
         }
 
         // Ollama: chunk long transcripts to fit local models' smaller contexts.
@@ -261,8 +275,6 @@ struct NativeSummaryView: View {
 
     private func cancelSummarization() {
         cancelRequested = true
-        currentClaudeProvider?.cancel()
-        currentClaudeProvider = nil
         isLoading = false
     }
 

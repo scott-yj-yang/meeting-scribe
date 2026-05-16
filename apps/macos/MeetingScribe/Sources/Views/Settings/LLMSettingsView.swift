@@ -24,21 +24,6 @@ struct LLMSettingsView: View {
                 .pickerStyle(.radioGroup)
             }
 
-            if settings.providerKind == .claudeCLI {
-                Section("Claude CLI") {
-                    if ClaudeCLIProvider.isInstalled {
-                        Label("Claude CLI installed", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                    } else {
-                        Label("Claude CLI not found", systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
-                        Text("Install with: `npm install -g @anthropic-ai/claude-code`")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-
             if settings.providerKind == .ollama {
                 Section("Ollama") {
                     VStack(alignment: .leading, spacing: 4) {

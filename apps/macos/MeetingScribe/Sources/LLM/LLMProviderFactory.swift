@@ -10,8 +10,6 @@ enum LLMProviderFactory {
         ollamaModel: String
     ) -> LLMProvider {
         switch kind {
-        case .claudeCLI:
-            return ClaudeCLIProvider()
         case .ollama:
             return OllamaProvider(endpoint: ollamaEndpoint, model: ollamaModel)
         }

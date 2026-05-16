@@ -5,13 +5,11 @@ struct SetupView: View {
 
     @State private var whisperInstalled = false
     @State private var whisperModelInstalled = false
-    @State private var claudeInstalled = false
     @State private var ollamaInstalled = false
     @State private var ollamaServerRunning = false
 
     @State private var installingWhisper = false
     @State private var installingModel = false
-    @State private var installingClaude = false
     @State private var installingOllama = false
     @State private var startingOllamaServer = false
 
@@ -65,18 +63,11 @@ struct SetupView: View {
                 }
             }
 
-            Section("Summarization (choose one)") {
-                dependencyRow(
-                    name: "Claude CLI",
-                    description: "Anthropic Claude for meeting summaries",
-                    installed: claudeInstalled,
-                    installing: installingClaude
-                ) {
-                    installingClaude = true
-                    await runCommand("/opt/homebrew/bin/npm", arguments: ["install", "-g", "@anthropic-ai/claude-code"])
-                    refreshStatus()
-                    installingClaude = false
-                }
+            Section("Summarization") {
+                Text("Open the meeting folder in Claude Code and run /summarize — the summary appears in the panel automatically. Or install Ollama below for fully-local automatic summaries.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 dependencyRow(
                     name: "Ollama",
@@ -194,9 +185,6 @@ struct SetupView: View {
                 fm.fileExists(atPath: "\(dir)/\(name)")
             }
         }
-
-        // Claude CLI
-        claudeInstalled = ClaudeCLIProvider.isInstalled
 
         // Ollama
         let ollamaPaths = [

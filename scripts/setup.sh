@@ -104,39 +104,31 @@ fi
 # ── Step 5: Optional summarization provider ──────────────
 step 5 "Summarization provider (optional)"
 echo ""
-echo "  MeetingScribe can summarize transcripts with either:"
+echo "  Two ways to summarize a transcript:"
 echo ""
-echo "    1) Claude CLI  — cloud-based, needs Anthropic API key"
-echo "       Install: npm install -g @anthropic-ai/claude-code"
+echo "    1) Claude Code  — open the meeting folder and run /summarize."
+echo "                      Each meeting folder ships with a CLAUDE.md and a"
+echo "                      /summarize slash command, so you don't need to"
+echo "                      configure anything beyond installing Claude Code."
+echo "                      https://claude.com/claude-code"
 echo ""
-echo "    2) Ollama      — fully local, no API key, ~2 GB model download"
-echo "       Install: bash $REPO_ROOT/scripts/install-ollama.sh"
+echo "    2) Ollama       — fully local, automatic, no API key, ~2 GB model."
+echo "                      Install: bash $REPO_ROOT/scripts/install-ollama.sh"
 echo ""
-echo "    3) Skip        — transcription works without summarization"
+echo "    3) Skip         — transcription works without summarization."
 echo ""
 
 # Auto-detect what's already installed
-if command -v claude >/dev/null 2>&1; then
-    ok "Claude CLI already installed ($(which claude))"
-fi
 if command -v ollama >/dev/null 2>&1; then
     ok "Ollama already installed ($(ollama --version 2>/dev/null || echo 'installed'))"
 fi
 
 if [ -t 0 ]; then
     # Interactive terminal — ask
-    echo -n "  Install now? [1/2/3/skip]: "
+    echo -n "  Install Ollama now? [y/N]: "
     read -r choice
     case "$choice" in
-        1)
-            if command -v npm >/dev/null 2>&1; then
-                npm install -g @anthropic-ai/claude-code
-                ok "Claude CLI installed"
-            else
-                warn "npm not found. Install Node.js first, then: npm install -g @anthropic-ai/claude-code"
-            fi
-            ;;
-        2)
+        y|Y|yes)
             bash "$REPO_ROOT/scripts/install-ollama.sh"
             ;;
         *)
@@ -144,7 +136,7 @@ if [ -t 0 ]; then
             ;;
     esac
 else
-    info "Non-interactive — skipping provider install. Run one of the commands above manually."
+    info "Non-interactive — skipping provider install."
 fi
 
 # ── Done ─────────────────────────────────────────────────
