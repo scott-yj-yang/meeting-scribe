@@ -358,72 +358,24 @@ struct MenuBarView: View {
                 }
             }
 
-            // Live transcript area
-            if appState.liveTranscriptActive {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(.green)
-                                .frame(width: 5, height: 5)
-                            Text("Audio check")
-                                .font(.system(size: 9, weight: .semibold))
-                                .foregroundStyle(.green)
-                                .textCase(.uppercase)
-                        }
-                        Spacer()
-                        Button {
-                            appState.toggleLiveTranscript()
-                        } label: {
-                            Text("Hide")
-                                .font(.system(size: 9))
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.borderless)
+            // Audio level meter
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 3) {
+                    ForEach(0..<12, id: \.self) { i in
+                        RoundedRectangle(cornerRadius: 1)
+                            .fill(Float(i) / 12.0 < appState.audioLevel ? Color.green : Color.gray.opacity(0.15))
+                            .frame(width: 4, height: 10)
                     }
-
-                    if !appState.liveTranscriber.liveText.isEmpty {
-                        Text(appState.liveTranscriber.liveText)
-                            .font(.system(.caption, design: .rounded))
-                            .foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .lineLimit(4)
-                    } else {
-                        // Audio level meter — shows mic is working even without speech-to-text
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack(spacing: 3) {
-                                ForEach(0..<12, id: \.self) { i in
-                                    RoundedRectangle(cornerRadius: 1)
-                                        .fill(Float(i) / 12.0 < appState.audioLevel ? Color.green : Color.gray.opacity(0.15))
-                                        .frame(width: 4, height: 10)
-                                }
-                                Spacer()
-                                Text(appState.audioLevel > 0.01 ? "Receiving audio" : "Waiting for audio...")
-                                    .font(.system(size: 9))
-                                    .foregroundStyle(.tertiary)
-                            }
-                            .animation(.linear(duration: 0.03), value: appState.audioLevel)
-                        }
-                    }
+                    Spacer()
+                    Text(appState.audioLevel > 0.01 ? "Receiving audio" : "Waiting for audio...")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
                 }
-                .padding(8)
-                .background(Color.green.opacity(0.06))
-                .cornerRadius(6)
-            } else {
-                // Show "check audio" button when live transcript is off
-                Button {
-                    appState.toggleLiveTranscript()
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "waveform")
-                            .font(.system(size: 10))
-                        Text("Check audio")
-                            .font(.caption2)
-                    }
-                    .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.borderless)
+                .animation(.linear(duration: 0.03), value: appState.audioLevel)
             }
+            .padding(8)
+            .background(Color.green.opacity(0.06))
+            .cornerRadius(6)
 
             // Live notes (inlined from deleted LiveNotesPanel)
             VStack(alignment: .leading, spacing: 4) {

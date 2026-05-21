@@ -1,7 +1,6 @@
 import Foundation
 import SwiftUI
 import AVFoundation
-import CoreMedia
 
 @MainActor
 class AppState: ObservableObject {
@@ -29,12 +28,7 @@ class AppState: ObservableObject {
 
     @AppStorage("outputDirectory") var outputDirectory = "~/MeetingScribe"
     @AppStorage("saveAudio") var saveAudio = true
-    // Defaults to true. Toggled in Settings → Setup. Read at recording start;
-    // runtime toggle via toggleLiveTranscript() also supported.
-    @AppStorage("liveTranscriptEnabled") var liveTranscriptEnabled = true
 
-    @Published var liveTranscriptActive = false
-    @Published var liveTranscriptError: String? = nil  // Set when setup() throws; surfaced to chat panel
     @Published var audioLevel: Float = 0  // 0.0 - 1.0, shows mic is receiving audio
 
     // MARK: - Live chat during recording
@@ -48,7 +42,6 @@ class AppState: ObservableObject {
     private var timer: Timer?
     private var recordingStartDate: Date?
     let audioCaptureManager = AudioCaptureManager()
-    let liveTranscriber = LiveTranscriber()
     private var audioFileWriter: AudioFileWriter?
     private let whisperProcessor = WhisperPostProcessor()
 
@@ -82,54 +75,19 @@ class AppState: ObservableObject {
         }
     }
 
-    /// Toggles `liveTranscriptEnabled` and starts/stops the transcriber
-    /// mid-recording. Called by the transcript-toggle button in
-    /// `RecordingTopBar`.
-    func toggleLiveTranscript() {
-        liveTranscriptEnabled.toggle()
-        guard isRecording else { return }
-        if liveTranscriptEnabled {
-            liveTranscriber.start()
-            liveTranscriptActive = liveTranscriber.isAvailable
-            liveTranscriptError = liveTranscriber.lastError
-        } else {
-            liveTranscriber.stop()
-            liveTranscriptActive = false
-            liveTranscriptError = nil
-        }
-    }
-
     func openLiveChatPanel() {
         showLiveChatPanel = true
-        // No timer to cancel anymore. Live transcript runs the full recording
-        // when liveTranscriptEnabled. If it isn't running and the user wants
-        // it now, they can flip it from the recording top bar.
-        guard liveTranscriptEnabled, isRecording, liveTranscriber.isAvailable else { return }
-        if !liveTranscriptActive {
-            liveTranscriber.start()
-            liveTranscriptActive = liveTranscriber.isAvailable
-            liveTranscriptError = liveTranscriber.lastError
-        }
+        guard isRecording else { return }
     }
 
     func closeLiveChatPanel() {
         showLiveChatPanel = false
-        // Live transcript continues running; no timer to rearm anymore.
     }
 
     private func doStartRecording() async {
         let startDate = Date()
 
         do {
-            if liveTranscriptEnabled {
-                liveTranscriber.start()
-                liveTranscriptActive = liveTranscriber.isAvailable
-                liveTranscriptError = liveTranscriber.lastError
-            } else {
-                liveTranscriptActive = false
-                liveTranscriptError = nil
-            }
-
             let title = meetingTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? "Meeting \(startDate.formatted(.dateTime.month().day().hour().minute()))"
                 : meetingTitle.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -166,20 +124,10 @@ class AppState: ObservableObject {
                 Task { @MainActor in
                     guard let self = self else { return }
                     self.audioLevel = capturedLevel
-                    if self.liveTranscriptActive, let format = self.audioCaptureManager.micFormat {
-                        self.liveTranscriber.appendMic(buffer, format: format)
-                    }
                 }
             }
-            audioCaptureManager.onSystemAudio = { [weak self] sampleBuffer in
-                nonisolated(unsafe) let sampleBuffer = sampleBuffer
+            audioCaptureManager.onSystemAudio = { sampleBuffer in
                 writer.writeSystemAudio(sampleBuffer: sampleBuffer)
-                Task { @MainActor in
-                    guard let self = self, self.liveTranscriptActive else { return }
-                    if let pcm = Self.pcmBuffer(from: sampleBuffer) {
-                        self.liveTranscriber.appendSystem(pcm.buffer, format: pcm.format)
-                    }
-                }
             }
 
             await audioCaptureManager.startCapture()
@@ -243,7 +191,6 @@ class AppState: ObservableObject {
 
         timer?.invalidate()
         timer = nil
-        liveTranscriptActive = false
 
         // === Phase 2: Finalize audio. This must complete before a new
         // recording can start (otherwise the shared audioCaptureManager and
@@ -252,7 +199,6 @@ class AppState: ObservableObject {
         isFinalizingPreviousRecording = true
 
         await audioCaptureManager.stopCapture()
-        liveTranscriber.stop()
         isRecording = false
 
         let audioURL = writerToFinalize?.stop()
@@ -435,35 +381,4 @@ class AppState: ObservableObject {
         return sec > 0 ? "~\(min)m \(sec)s" : "~\(min)m"
     }
 
-    // MARK: - Audio conversion helpers
-
-    private static func pcmBuffer(from sampleBuffer: CMSampleBuffer) -> (buffer: AVAudioPCMBuffer, format: AVAudioFormat)? {
-        guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer),
-              let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc)?.pointee else { return nil }
-        var asbdMutable = asbd
-        guard let format = AVAudioFormat(streamDescription: &asbdMutable) else { return nil }
-
-        let frameCount = AVAudioFrameCount(CMSampleBufferGetNumSamples(sampleBuffer))
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return nil }
-        buffer.frameLength = frameCount
-
-        guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { return nil }
-        var lengthAtOffset: Int = 0
-        var totalLength: Int = 0
-        var dataPointer: UnsafeMutablePointer<Int8>?
-        let err = CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: &lengthAtOffset, totalLengthOut: &totalLength, dataPointerOut: &dataPointer)
-        guard err == kCMBlockBufferNoErr, let dataPointer else { return nil }
-
-        let bytesPerFrame = Int(format.streamDescription.pointee.mBytesPerFrame)
-        let copyBytes = min(totalLength, Int(frameCount) * bytesPerFrame)
-
-        if let floatChannelData = buffer.floatChannelData {
-            memcpy(floatChannelData[0], dataPointer, copyBytes)
-        } else if let int16ChannelData = buffer.int16ChannelData {
-            memcpy(int16ChannelData[0], dataPointer, copyBytes)
-        } else {
-            return nil
-        }
-        return (buffer, format)
-    }
 }

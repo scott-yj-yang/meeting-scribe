@@ -147,8 +147,8 @@ struct MarkdownNotesEditor: NSViewRepresentable {
             parent.text = tv.string
         }
 
-        /// Public API for external views (e.g. `LiveTranscriptPane`) to insert
-        /// text at the current caret position. Re-styles after the insert.
+        /// Public API for external views to insert text at the current caret
+        /// position. Re-styles after the insert.
         func insertAtCaret(_ string: String) {
             guard let tv = textView else { return }
             let selected = tv.selectedRange()

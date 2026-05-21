@@ -39,27 +39,6 @@ struct RecordingTopBar: View {
 
             Spacer()
 
-            // Transcript toggle
-            Button {
-                appState.toggleLiveTranscript()
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: appState.liveTranscriptEnabled ? "text.alignleft" : "text.alignleft.slash")
-                    Text("Transcript")
-                        .font(.caption.weight(.medium))
-                    Text(appState.liveTranscriptEnabled ? "ON" : "OFF")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(appState.liveTranscriptEnabled ? .blue : .secondary)
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(
-                    Capsule().fill(appState.liveTranscriptEnabled ? Color.blue.opacity(0.12) : Color.gray.opacity(0.12))
-                )
-            }
-            .buttonStyle(.plain)
-            .help(appState.liveTranscriptEnabled ? "Hide live transcript" : "Show live transcript")
-
             // Ask AI — opens the live chat panel (only when not already open)
             if !appState.showLiveChatPanel {
                 Button {

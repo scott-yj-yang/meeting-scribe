@@ -1,8 +1,6 @@
 import SwiftUI
 
 struct SetupView: View {
-    @AppStorage("liveTranscriptEnabled") private var liveTranscriptEnabled = false
-
     @State private var ollamaInstalled = false
     @State private var ollamaServerRunning = false
 
@@ -15,16 +13,6 @@ struct SetupView: View {
     var body: some View {
         Form {
             Section("Transcription") {
-                Toggle(isOn: $liveTranscriptEnabled) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Live transcription during recording")
-                        Text("Whisper transcribes ~5s slices of mic + system audio while you record. On by default. Costs ~10-20% of one CPU core, intermittently. The final post-recording transcription still runs at stop.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-
                 WhisperSetupView()
             }
 

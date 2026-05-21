@@ -143,16 +143,8 @@ struct RecordingModeView: View {
             guard let appState = appState else {
                 return ChatMessage(role: .system, text: "")
             }
-            let rawTranscript = appState.liveTranscriber.liveText
-            let transcriptForPrompt: String
-            if let err = appState.liveTranscriptError {
-                transcriptForPrompt = "(Live transcription unavailable: \(err). Answer based on the meeting title and user notes only; if the user asks about what was said, explain that live transcription isn't running.)"
-            } else if rawTranscript.isEmpty {
-                transcriptForPrompt = "(Live transcription is running but no speech has been recognized yet. If the user asks about what was said, say so honestly.)"
-            } else {
-                transcriptForPrompt = rawTranscript
-            }
-            print("[LiveChat] Building system message — transcript chars: \(rawTranscript.count), error: \(appState.liveTranscriptError ?? "nil")")
+            let transcriptForPrompt = "(Live transcription is not available during recording. Answer based on the meeting title and user notes only; if the user asks about what was said, explain that transcription runs after the recording stops.)"
+            print("[LiveChat] Building system message — no live transcript")
             let context = MeetingContext(
                 title: appState.meetingTitle.isEmpty ? "Current meeting" : appState.meetingTitle,
                 date: Date(),

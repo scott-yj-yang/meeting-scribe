@@ -1,8 +1,7 @@
 import Foundation
 
 /// Formats a duration in seconds as `m:ss` or `h:mm:ss`.
-/// Used both by `LiveTranscriptPane` (rendering chunk timestamps) and by
-/// the click-to-anchor logic that inserts `[m:ss] ` into the notes editor.
+/// Used by the notes editor and recording UI.
 enum TimestampFormatter {
     static func format(_ seconds: TimeInterval) -> String {
         let total = max(0, Int(seconds))
