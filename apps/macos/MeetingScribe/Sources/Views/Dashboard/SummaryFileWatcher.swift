@@ -12,9 +12,9 @@ import Foundation
 ///    Directory watches survive that and fire on the rename event.
 @MainActor
 final class SummaryFileWatcher {
-    private let source: DispatchSourceFileSystemObject
+    nonisolated(unsafe) private let source: DispatchSourceFileSystemObject
     private let fd: Int32
-    private var debounceTask: Task<Void, Never>?
+    nonisolated(unsafe) private var debounceTask: Task<Void, Never>?
 
     init?(directory: URL, onChange: @escaping @MainActor () -> Void) {
         let fd = open(directory.path, O_EVTONLY)
