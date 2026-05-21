@@ -68,10 +68,13 @@ struct NativeSummaryView: View {
                         Picker("Template", selection: $selectedTemplate) {
                             ForEach(templates, id: \.0) { id, label in Text(label).tag(id) }
                         }.pickerStyle(.menu).frame(width: 200)
-                        Button("Open in Claude Code") {
+                        Button(action: {
                             if let dir = meeting.directoryURL { openInClaudeCode(at: dir) }
+                        }) {
+                            Label("Open with Claude", systemImage: "terminal")
                         }
                         .buttonStyle(.bordered)
+                        .help("Requires Claude Code CLI installed. See claude.com/claude-code")
                         .onHover { hovering in
                             if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
                         }
@@ -107,18 +110,32 @@ struct NativeSummaryView: View {
                     Text("No summary yet").font(.headline).foregroundStyle(.secondary)
 
                     VStack(spacing: 8) {
-                        Button("Open in Claude Code") {
+                        Button(action: {
                             if let dir = meeting.directoryURL { openInClaudeCode(at: dir) }
+                        }) {
+                            Label {
+                                Text("Open with Claude")
+                            } icon: {
+                                Image(systemName: "terminal")
+                            }
+                            .font(.body.weight(.semibold))
                         }
                         .buttonStyle(.borderedProminent).controlSize(.large)
+                        .help("Requires Claude Code CLI installed. See claude.com/claude-code")
                         .onHover { hovering in
                             if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
                         }
-                        Text("Opens Claude Code in Terminal at this meeting folder. Type /summarize and the summary will appear here automatically.")
-                            .font(.caption)
+                        (Text("Opens Terminal at this meeting folder and starts Claude. Type ")
+                         + Text("/summarize").font(.system(.body, design: .monospaced))
+                         + Text(" and the summary appears here automatically."))
+                            .font(.callout)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: 360)
+                        Text("Requires the Claude Code CLI — install at claude.com/claude-code")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .padding(.top, 4)
                         Button {
                             revealInFinder()
                         } label: {
