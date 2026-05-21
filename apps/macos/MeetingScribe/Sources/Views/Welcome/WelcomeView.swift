@@ -64,9 +64,9 @@ struct WelcomeView: View {
 
     private var transcriptionSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Transcription engine")
+            Text("Speech recognition")
                 .font(.headline)
-            Text("MeetingScribe transcribes recordings on-device with whisper-cpp. Install the tool and the speech model below — about 1 GB total. Homebrew will be invoked for whisper-cpp; the model downloads directly from Hugging Face.")
+            Text("MeetingScribe converts recordings to text on your Mac — nothing leaves your computer. Install the free speech-recognition tool below (~1 GB total). One-time setup.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -85,7 +85,7 @@ struct WelcomeView: View {
 
     private var footer: some View {
         HStack {
-            Button("Skip for now") {
+            Button("Set up later") {
                 hasCompletedWelcome = true
             }
             .buttonStyle(.borderless)
@@ -106,7 +106,7 @@ struct WelcomeView: View {
         if !allRequiredGranted {
             return "Continue anyway"
         }
-        return whisperReady ? "Get Started" : "Continue without transcription"
+        return whisperReady ? "Get Started" : "Skip for now (you can install later)"
     }
 
     private var allRequiredGranted: Bool {

@@ -271,7 +271,7 @@ class AppState: ObservableObject {
                 statusMessage = "Transcription failed"
             }
         } else {
-            statusMessage = "Install whisper-cpp"
+            statusMessage = "Transcription not set up — open Settings to install it"
         }
 
         isTranscribing = false

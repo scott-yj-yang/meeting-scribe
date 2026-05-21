@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Two-row UI for installing whisper-cli + its model. Shared between
 /// the Settings → Setup tab and the first-launch Welcome flow.
@@ -9,6 +10,7 @@ struct WhisperSetupView: View {
     /// Reported up to the caller whenever install status changes.
     var onStatusChange: ((Bool) -> Void)? = nil
 
+    @State private var brewInstalled = false
     @State private var whisperInstalled = false
     @State private var modelInstalled = false
     @State private var installingWhisper = false
@@ -20,37 +22,65 @@ struct WhisperSetupView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            dependencyRow(
-                name: "whisper-cpp",
-                description: "Speech-to-text transcription engine",
-                installed: whisperInstalled,
-                installing: installingWhisper
-            ) {
-                installingWhisper = true
-                await runCommand("/opt/homebrew/bin/brew", arguments: ["install", "whisper-cpp"])
-                refreshStatus()
-                installingWhisper = false
+            if !brewInstalled {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Homebrew required", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .font(.callout.weight(.semibold))
+                    Text("MeetingScribe uses Homebrew to install the speech-recognition tool. It's free and only needs to be set up once.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button {
+                        if let url = URL(string: "https://brew.sh") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    } label: {
+                        Label("Install Homebrew (opens browser)", systemImage: "arrow.up.right.square")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.regular)
+                }
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.orange.opacity(0.1))
+                )
             }
 
-            dependencyRow(
-                name: "Whisper model",
-                description: "Large-v3-turbo model (~800 MB download)",
-                installed: modelInstalled,
-                installing: installingModel
-            ) {
-                installingModel = true
-                let dir = NSHomeDirectory() + "/.local/share/whisper-cpp"
-                await runCommand("/bin/mkdir", arguments: ["-p", dir])
-                let dest = dir + "/ggml-large-v3-turbo.bin"
-                await runCommand(
-                    "/usr/bin/curl",
-                    arguments: [
-                        "-L", "-o", dest,
-                        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
-                    ]
-                )
-                refreshStatus()
-                installingModel = false
+            if brewInstalled {
+                dependencyRow(
+                    name: "whisper-cpp",
+                    description: "Speech-to-text transcription engine",
+                    installed: whisperInstalled,
+                    installing: installingWhisper
+                ) {
+                    installingWhisper = true
+                    await runCommand("/opt/homebrew/bin/brew", arguments: ["install", "whisper-cpp"])
+                    refreshStatus()
+                    installingWhisper = false
+                }
+
+                dependencyRow(
+                    name: "Whisper model",
+                    description: "Large-v3-turbo model (~800 MB download)",
+                    installed: modelInstalled,
+                    installing: installingModel
+                ) {
+                    installingModel = true
+                    let dir = NSHomeDirectory() + "/.local/share/whisper-cpp"
+                    await runCommand("/bin/mkdir", arguments: ["-p", dir])
+                    let dest = dir + "/ggml-large-v3-turbo.bin"
+                    await runCommand(
+                        "/usr/bin/curl",
+                        arguments: [
+                            "-L", "--progress-bar", "-o", dest,
+                            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
+                        ]
+                    )
+                    refreshStatus()
+                    installingModel = false
+                }
             }
 
             if showLog {
@@ -94,8 +124,13 @@ struct WhisperSetupView: View {
                     .foregroundStyle(.green)
                     .font(.caption)
             } else if installing {
-                ProgressView()
-                    .controlSize(.small)
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(name == "Whisper model" ? "Downloading… (~5-15 min)" : "Installing…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             } else {
                 Button("Install") { Task { await install() } }
                     .buttonStyle(.bordered)
@@ -106,6 +141,8 @@ struct WhisperSetupView: View {
     private func refreshStatus() {
         let fm = FileManager.default
         let home = NSHomeDirectory()
+
+        brewInstalled = fm.fileExists(atPath: "/opt/homebrew/bin/brew") || fm.fileExists(atPath: "/usr/local/bin/brew")
 
         let whisperPaths = [
             "/opt/homebrew/bin/whisper-cli",
