@@ -76,3 +76,23 @@ fi
 
 echo "  Detected old install. Recordings at ~/MeetingScribe/ will NOT be touched."
 echo ""
+
+step "1/6" "Stopping old web server..."
+if tmux has-session -t meetingscribe 2>/dev/null; then
+    tmux kill-session -t meetingscribe
+    ok "Killed tmux session 'meetingscribe'"
+else
+    skip "No tmux session running"
+fi
+
+for port in 3000 3001; do
+    PIDS=$(lsof -ti :$port 2>/dev/null || true)
+    if [[ -n "$PIDS" ]]; then
+        if confirm "Port $port is in use (PIDs: $PIDS). Kill?"; then
+            echo "$PIDS" | xargs kill -9 2>/dev/null || true
+            ok "Freed port $port"
+        else
+            skip "Left port $port alone"
+        fi
+    fi
+done
