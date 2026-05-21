@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-dmg:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Build, sign (ad-hoc), package DMG
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: bash scripts/release.sh
+
+      - name: Upload DMG to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.dmg
+          draft: false
+          generate_release_notes: true
+          body: |
+            ## Installation
+
+            Download `MeetingScribe-<version>.dmg`, double-click to open, then drag
+            **MeetingScribe.app** into your Applications folder.
+
+            **First launch (one-time, per machine):** macOS will show
+            *"MeetingScribe.app cannot be opened because the developer cannot
+            be verified."* This is expected — this build is ad-hoc signed,
+            not notarized.
+
+            To proceed:
+            1. Right-click `MeetingScribe.app` in `/Applications/` → **Open**
+            2. Click **Open** in the warning dialog
+
+            Or from Terminal:
+            ```
+            xattr -dr com.apple.quarantine /Applications/MeetingScribe.app
+            ```
+
+            **Requirements:** Apple Silicon Mac (M1 or later), macOS 14 (Sonoma) or later.
+            Intel Macs are not supported by this build.
