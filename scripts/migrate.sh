@@ -169,3 +169,37 @@ if command -v psql &>/dev/null && psql -lqt 2>/dev/null | cut -d \| -f 1 | grep 
 else
     skip "Database '$DB_NAME' not found (or psql unavailable)"
 fi
+
+step "6/6" "Old source tree at $OLD_INSTALL_DIR..."
+if [[ -d "$OLD_INSTALL_DIR/.git" ]]; then
+    echo "  Options:"
+    echo "    1) Remove entirely (recommended if you don't develop MeetingScribe)"
+    echo "    2) Switch to feat/native-overhaul branch (recommended for contributors)"
+    echo "    3) Leave alone"
+    if $ALL; then
+        REPO_CHOICE=1
+    else
+        if [[ -t 0 ]]; then
+            read -p "  Choose [1/2/3]: " -n 1 -r REPO_CHOICE
+            echo
+        else
+            REPO_CHOICE=3
+        fi
+    fi
+    case "$REPO_CHOICE" in
+        1)
+            rm -rf "$OLD_INSTALL_DIR"
+            ok "Removed $OLD_INSTALL_DIR"
+            ;;
+        2)
+            (cd "$OLD_INSTALL_DIR" && git fetch origin && git checkout feat/native-overhaul && git pull --ff-only) \
+                && ok "Switched to feat/native-overhaul" \
+                || warn "Branch switch failed — check $OLD_INSTALL_DIR/.git manually"
+            ;;
+        *)
+            skip "Left $OLD_INSTALL_DIR in place"
+            ;;
+    esac
+else
+    skip "No git repo at $OLD_INSTALL_DIR"
+fi
