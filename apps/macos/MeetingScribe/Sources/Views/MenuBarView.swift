@@ -6,6 +6,7 @@ struct MenuBarView: View {
     @State private var showSettings = false
     @State private var showTodaysMeetings = false
     @State private var notesExpanded = false
+    @State private var startButtonHovered = false
 
     private enum Panel: Equatable {
         case main, settings, postRecording
@@ -144,7 +145,7 @@ struct MenuBarView: View {
                     HStack(spacing: 5) {
                         ForEach(meetingTypes, id: \.self) { type in
                             Button {
-                                withAnimation(.easeInOut(duration: 0.15)) {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                     if appState.selectedMeetingType == type {
                                         appState.selectedMeetingType = nil
                                     } else {
@@ -168,8 +169,12 @@ struct MenuBarView: View {
                                             : .secondary
                                     )
                                     .cornerRadius(10)
+                                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: appState.selectedMeetingType)
                             }
                             .buttonStyle(.plain)
+                            .onHover { hovering in
+                                if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+                            }
                         }
                     }
                 }
@@ -325,6 +330,12 @@ struct MenuBarView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .tint(.blue)
+            .scaleEffect(startButtonHovered ? 1.02 : 1.0)
+            .animation(.easeInOut(duration: 0.15), value: startButtonHovered)
+            .onHover { hovering in
+                startButtonHovered = hovering
+                if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+            }
             .padding(.horizontal, 16)
             .padding(.bottom, 10)
         }
@@ -530,6 +541,9 @@ struct MenuBarView: View {
         }
         .buttonStyle(.plain)
         .animation(.easeInOut(duration: 0.15), value: isSelected)
+        .onHover { hovering in
+            if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+        }
     }
 
     @ViewBuilder
@@ -585,6 +599,9 @@ struct MenuBarView: View {
         }
         .buttonStyle(.plain)
         .animation(.easeInOut(duration: 0.15), value: isSelected)
+        .onHover { hovering in
+            if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+        }
     }
 
     // MARK: - Recent Section
@@ -629,6 +646,9 @@ struct MenuBarView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .onHover { hovering in
+                        if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+                    }
                 }
                 .padding(.bottom, 6)
             }
@@ -918,6 +938,10 @@ struct MenuBarView: View {
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
+        .onHover { hovering in
+            guard enabled else { return }
+            if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+        }
     }
 
     // MARK: - Helpers

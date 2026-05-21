@@ -72,11 +72,17 @@ struct NativeSummaryView: View {
                             if let dir = meeting.directoryURL { openInClaudeCode(at: dir) }
                         }
                         .buttonStyle(.bordered)
+                        .onHover { hovering in
+                            if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+                        }
                         Button("Show in Finder") {
                             revealInFinder()
                         }
                         .buttonStyle(.borderless)
                         .controlSize(.small)
+                        .onHover { hovering in
+                            if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+                        }
                         if providerAvailable {
                             Button("Resummarize with Ollama") { runSummarization() }.buttonStyle(.bordered)
                         }
@@ -105,6 +111,9 @@ struct NativeSummaryView: View {
                             if let dir = meeting.directoryURL { openInClaudeCode(at: dir) }
                         }
                         .buttonStyle(.borderedProminent).controlSize(.large)
+                        .onHover { hovering in
+                            if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+                        }
                         Text("Opens Claude Code in Terminal at this meeting folder. Type /summarize and the summary will appear here automatically.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -118,6 +127,9 @@ struct NativeSummaryView: View {
                         .buttonStyle(.borderless)
                         .controlSize(.small)
                         .padding(.top, 4)
+                        .onHover { hovering in
+                            if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+                        }
                     }
 
                     if providerAvailable {

@@ -129,6 +129,7 @@ private struct MeetingRow: View {
             }
         }
         .padding(.vertical, 2)
+        .modifier(ClickableHoverModifier(cornerRadius: 8, highlightOpacity: 0.06))
     }
 
     private func formatDuration(_ seconds: TimeInterval) -> String {

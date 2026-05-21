@@ -308,7 +308,7 @@ struct RecordingModeView: View {
         HStack(spacing: 6) {
             ForEach(meetingTypes, id: \.self) { type in
                 Button {
-                    withAnimation(.easeInOut(duration: 0.15)) {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                         if appState.selectedMeetingType == type {
                             appState.selectedMeetingType = nil
                         } else {
@@ -331,8 +331,12 @@ struct RecordingModeView: View {
                                 : .secondary
                         )
                         .cornerRadius(12)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: appState.selectedMeetingType)
                 }
                 .buttonStyle(.plain)
+                .onHover { hovering in
+                    if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+                }
             }
         }
     }
