@@ -4,6 +4,7 @@ import AppKit
 struct WelcomeView: View {
     @StateObject private var permissions = PermissionsManager()
     @AppStorage("hasCompletedWelcome") private var hasCompletedWelcome = false
+    @State private var whisperReady = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -13,7 +14,7 @@ struct WelcomeView: View {
             Divider()
             footer
         }
-        .frame(width: 560, height: 600)
+        .frame(width: 560, height: 640)
         .task {
             await permissions.refreshAll()
         }
@@ -34,27 +35,52 @@ struct WelcomeView: View {
                 .padding(.horizontal, 40)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 28)
+        .padding(.vertical, 24)
     }
 
     private var cards: some View {
         ScrollView {
-            VStack(spacing: 12) {
-                ForEach(PermissionKind.allCases, id: \.self) { kind in
-                    PermissionCard(
-                        kind: kind,
-                        status: permissions.statuses[kind] ?? .notDetermined,
-                        onGrant: {
-                            Task { await permissions.request(kind) }
-                        },
-                        onOpenSettings: {
-                            openSystemSettings(for: kind)
-                        }
-                    )
+            VStack(spacing: 16) {
+                VStack(spacing: 12) {
+                    ForEach(PermissionKind.allCases, id: \.self) { kind in
+                        PermissionCard(
+                            kind: kind,
+                            status: permissions.statuses[kind] ?? .notDetermined,
+                            onGrant: {
+                                Task { await permissions.request(kind) }
+                            },
+                            onOpenSettings: {
+                                openSystemSettings(for: kind)
+                            }
+                        )
+                    }
                 }
+
+                transcriptionSection
             }
             .padding(20)
         }
+    }
+
+    private var transcriptionSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Transcription engine")
+                .font(.headline)
+            Text("MeetingScribe transcribes recordings on-device with whisper-cpp. Install the tool and the speech model below — about 1 GB total. Homebrew will be invoked for whisper-cpp; the model downloads directly from Hugging Face.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            WhisperSetupView(onStatusChange: { installed in
+                whisperReady = installed
+            })
+            .padding(.top, 4)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(NSColor.controlBackgroundColor))
+        )
     }
 
     private var footer: some View {
@@ -66,7 +92,7 @@ struct WelcomeView: View {
 
             Spacer()
 
-            Button(allRequiredGranted ? "Get Started" : "Continue anyway") {
+            Button(primaryButtonLabel) {
                 hasCompletedWelcome = true
             }
             .buttonStyle(.borderedProminent)
@@ -74,6 +100,13 @@ struct WelcomeView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
+    }
+
+    private var primaryButtonLabel: String {
+        if !allRequiredGranted {
+            return "Continue anyway"
+        }
+        return whisperReady ? "Get Started" : "Continue without transcription"
     }
 
     private var allRequiredGranted: Bool {
