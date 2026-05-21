@@ -203,3 +203,19 @@ if [[ -d "$OLD_INSTALL_DIR/.git" ]]; then
 else
     skip "No git repo at $OLD_INSTALL_DIR"
 fi
+
+echo ""
+echo -e "${GREEN}${BOLD}Migration complete.${NC}"
+echo ""
+echo "  Your recordings are safe at ~/MeetingScribe/"
+echo ""
+echo "  Next: install the new native MeetingScribe.app"
+echo ""
+echo "    Once the DMG is published, download from:"
+echo "      https://github.com/scott-yj-yang/meeting-scribe/releases/latest"
+echo ""
+echo "    Until then (developer install):"
+echo "      git clone https://github.com/scott-yj-yang/meeting-scribe.git \\"
+echo "        --branch feat/native-overhaul ~/Developer/meeting-scribe"
+echo "      cd ~/Developer/meeting-scribe && bash scripts/setup.sh"
+echo ""
