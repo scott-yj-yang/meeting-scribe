@@ -8,6 +8,14 @@ struct RecordingModeView: View {
 
     private let meetingTypes = ["1:1", "Subgroup", "Lab Meeting", "Seminar", "Casual", "Standup"]
 
+    private func displayName(for type: String) -> String {
+        switch type {
+        case "1:1": return "One-on-One"
+        case "Subgroup": return "Small Group"
+        default: return type
+        }
+    }
+
     var body: some View {
         VStack {
             if appState.showPostRecording {
@@ -316,7 +324,7 @@ struct RecordingModeView: View {
                         }
                     }
                 } label: {
-                    Text(type)
+                    Text(displayName(for: type))
                         .font(.system(size: 12, weight: .medium))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)

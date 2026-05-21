@@ -153,7 +153,7 @@ struct MenuBarView: View {
                                     }
                                 }
                             } label: {
-                                Text(type)
+                                Text(displayName(for: type))
                                     .font(.system(size: 9, weight: .medium))
                                     .fixedSize()
                                     .padding(.horizontal, 7)
@@ -343,6 +343,14 @@ struct MenuBarView: View {
 
     private var meetingTypes: [String] {
         ["1:1", "Subgroup", "Lab Meeting", "Seminar", "Casual", "Standup"]
+    }
+
+    private func displayName(for type: String) -> String {
+        switch type {
+        case "1:1": return "One-on-One"
+        case "Subgroup": return "Small Group"
+        default: return type
+        }
     }
 
     // MARK: - Recording

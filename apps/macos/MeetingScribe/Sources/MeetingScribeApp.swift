@@ -35,7 +35,7 @@ struct MeetingScribeApp: App {
                 SetupView()
                     .tabItem { Label("Setup", systemImage: "arrow.down.circle") }
                 LLMSettingsView()
-                    .tabItem { Label("LLM", systemImage: "brain.head.profile") }
+                    .tabItem { Label("Summarization", systemImage: "brain.head.profile") }
                 NotionSettingsView()
                     .tabItem { Label("Notion", systemImage: "square.and.arrow.up.on.square") }
             }

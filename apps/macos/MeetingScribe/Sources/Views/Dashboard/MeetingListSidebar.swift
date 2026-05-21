@@ -77,6 +77,14 @@ struct MeetingListSidebar: View {
     @State private var searchText = ""
     @State private var selectedType: String?
 
+    private func displayName(for type: String) -> String {
+        switch type {
+        case "1:1": return "One-on-One"
+        case "Subgroup": return "Small Group"
+        default: return type
+        }
+    }
+
     var body: some View {
         List(selection: $selection) {
             MeetingListContent(
@@ -92,7 +100,7 @@ struct MeetingListSidebar: View {
                     Button("All") { selectedType = nil }
                     Divider()
                     ForEach(["1:1", "Subgroup", "Lab Meeting", "Seminar", "Standup", "Casual"], id: \.self) { type in
-                        Button(type) { selectedType = type.lowercased() }
+                        Button(displayName(for: type)) { selectedType = type.lowercased() }
                     }
                 } label: {
                     Image(systemName: selectedType != nil ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")

@@ -29,8 +29,8 @@ struct NativeSummaryView: View {
 
     private let templates = [
         ("default", "General Meeting"),
-        ("one-on-one", "1:1 Meeting"),
-        ("subgroup", "Subgroup Meeting"),
+        ("one-on-one", "One-on-One Meeting"),
+        ("subgroup", "Small Group Meeting"),
         ("standup", "Daily Standup"),
         ("planning", "Sprint Planning"),
         ("retro", "Retrospective"),

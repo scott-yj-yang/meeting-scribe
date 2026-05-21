@@ -84,19 +84,28 @@ struct WelcomeView: View {
     }
 
     private var footer: some View {
-        HStack {
-            Button("Set up later") {
-                hasCompletedWelcome = true
+        VStack(spacing: 8) {
+            if allRequiredGranted && !whisperReady {
+                Text("You can install speech recognition later in Settings.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, alignment: .center)
             }
-            .buttonStyle(.borderless)
 
-            Spacer()
+            HStack {
+                Button("Set up later") {
+                    hasCompletedWelcome = true
+                }
+                .buttonStyle(.borderless)
 
-            Button(primaryButtonLabel) {
-                hasCompletedWelcome = true
+                Spacer()
+
+                Button(primaryButtonLabel) {
+                    hasCompletedWelcome = true
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
             }
-            .buttonStyle(.borderedProminent)
-            .keyboardShortcut(.defaultAction)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
@@ -106,7 +115,7 @@ struct WelcomeView: View {
         if !allRequiredGranted {
             return "Continue anyway"
         }
-        return whisperReady ? "Get Started" : "Skip for now (you can install later)"
+        return whisperReady ? "Get Started" : "Continue"
     }
 
     private var allRequiredGranted: Bool {
