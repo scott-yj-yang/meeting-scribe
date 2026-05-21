@@ -18,7 +18,7 @@ struct SetupView: View {
                 Toggle(isOn: $liveTranscriptEnabled) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Live transcription during recording")
-                        Text("Runs Apple's on-device speech recognizer while you record so the live Q&A panel has context. Costs ~1 CPU core. Off by default — whisper-cpp runs when recording stops either way.")
+                        Text("Whisper transcribes ~5s slices of mic + system audio while you record. On by default. Costs ~10-20% of one CPU core, intermittently. The final post-recording transcription still runs at stop.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
