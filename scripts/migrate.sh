@@ -138,3 +138,20 @@ if command -v meetingctl &>/dev/null; then
 else
     skip "meetingctl not on PATH"
 fi
+
+step "4/6" "Removing stale meetingscribe-update symlink..."
+UPDATE_SYMLINK="$BREW_PREFIX/bin/meetingscribe-update"
+if [[ -L "$UPDATE_SYMLINK" ]] || [[ -f "$UPDATE_SYMLINK" ]]; then
+    if confirm "Remove $UPDATE_SYMLINK?"; then
+        rm -f "$UPDATE_SYMLINK" 2>/dev/null || sudo rm -f "$UPDATE_SYMLINK" 2>/dev/null || true
+        if [[ ! -e "$UPDATE_SYMLINK" ]]; then
+            ok "Removed $UPDATE_SYMLINK"
+        else
+            warn "Could not remove $UPDATE_SYMLINK — try: sudo rm $UPDATE_SYMLINK"
+        fi
+    else
+        skip "Kept $UPDATE_SYMLINK"
+    fi
+else
+    skip "No meetingscribe-update symlink"
+fi
