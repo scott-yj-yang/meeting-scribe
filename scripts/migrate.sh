@@ -118,3 +118,23 @@ done
 if ! $REMOVED_APP && [[ ! -d "$HOME/Applications/MeetingScribe.app" ]] && [[ ! -d "/Applications/MeetingScribe.app" ]]; then
     skip "No MeetingScribe.app installed"
 fi
+
+step "3/6" "Unlinking old meetingctl CLI..."
+if command -v meetingctl &>/dev/null; then
+    MEETINGCTL_PATH="$(command -v meetingctl)"
+    if confirm "Unlink meetingctl ($MEETINGCTL_PATH)?"; then
+        if [[ -d "$OLD_INSTALL_DIR/cli" ]]; then
+            (cd "$OLD_INSTALL_DIR/cli" && npm unlink 2>/dev/null) || true
+        fi
+        rm -f "$MEETINGCTL_PATH" 2>/dev/null || sudo rm -f "$MEETINGCTL_PATH" 2>/dev/null || true
+        if command -v meetingctl &>/dev/null; then
+            warn "meetingctl still on PATH at $(command -v meetingctl) — remove manually"
+        else
+            ok "Unlinked meetingctl"
+        fi
+    else
+        skip "Kept meetingctl"
+    fi
+else
+    skip "meetingctl not on PATH"
+fi
