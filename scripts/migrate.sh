@@ -155,3 +155,17 @@ if [[ -L "$UPDATE_SYMLINK" ]] || [[ -f "$UPDATE_SYMLINK" ]]; then
 else
     skip "No meetingscribe-update symlink"
 fi
+
+step "5/6" "PostgreSQL database '$DB_NAME'..."
+export PATH="$BREW_PREFIX/opt/postgresql@17/bin:$PATH"
+if command -v psql &>/dev/null && psql -lqt 2>/dev/null | cut -d \| -f 1 | grep -qw "$DB_NAME"; then
+    warn "All server-side meeting data in the '$DB_NAME' DB will be permanently lost."
+    warn "Your local recordings under ~/MeetingScribe/ are NOT affected."
+    if confirm "Drop database '$DB_NAME'?"; then
+        dropdb "$DB_NAME" 2>/dev/null && ok "Dropped database '$DB_NAME'" || warn "dropdb failed — run manually: dropdb $DB_NAME"
+    else
+        skip "Kept database '$DB_NAME'"
+    fi
+else
+    skip "Database '$DB_NAME' not found (or psql unavailable)"
+fi
