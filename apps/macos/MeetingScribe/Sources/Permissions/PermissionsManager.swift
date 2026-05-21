@@ -1,20 +1,17 @@
 import Foundation
 import AVFoundation
-import Speech
 import EventKit
 import ScreenCaptureKit
 import AppKit
 
 enum PermissionKind: String, CaseIterable, Sendable {
     case microphone
-    case speechRecognition
     case calendar
     case screenRecording
 
     var title: String {
         switch self {
         case .microphone: return "Microphone"
-        case .speechRecognition: return "Speech Recognition"
         case .calendar: return "Calendar"
         case .screenRecording: return "Screen & System Audio"
         }
@@ -24,8 +21,6 @@ enum PermissionKind: String, CaseIterable, Sendable {
         switch self {
         case .microphone:
             return "Required. MeetingScribe records your microphone to capture the meeting audio."
-        case .speechRecognition:
-            return "Required for live transcript. Runs entirely on-device."
         case .calendar:
             return "Optional. Lets MeetingScribe suggest upcoming meetings to record."
         case .screenRecording:
@@ -36,14 +31,13 @@ enum PermissionKind: String, CaseIterable, Sendable {
     var isRequired: Bool {
         switch self {
         case .microphone: return true
-        case .speechRecognition, .calendar, .screenRecording: return false
+        case .calendar, .screenRecording: return false
         }
     }
 
     var symbolName: String {
         switch self {
         case .microphone: return "mic.fill"
-        case .speechRecognition: return "text.bubble.fill"
         case .calendar: return "calendar"
         case .screenRecording: return "rectangle.on.rectangle.square"
         }
@@ -83,7 +77,6 @@ final class PermissionsManager: ObservableObject {
     func refreshAll() async {
         var next: [PermissionKind: PermissionStatus] = [:]
         next[.microphone] = currentMicrophoneStatus()
-        next[.speechRecognition] = currentSpeechStatus()
         next[.calendar] = currentCalendarStatus()
         next[.screenRecording] = await currentScreenRecordingStatus()
         statuses = next
@@ -94,14 +87,6 @@ final class PermissionsManager: ObservableObject {
         case .microphone:
             let granted = await AVCaptureDevice.requestAccess(for: .audio)
             statuses[kind] = granted ? .granted : .denied
-        case .speechRecognition:
-            // Run on a background queue to avoid TCC/MainActor conflict (matches SpeechAuthHelper idiom).
-            let status = await withCheckedContinuation { (cont: CheckedContinuation<SFSpeechRecognizerAuthorizationStatus, Never>) in
-                DispatchQueue.global(qos: .userInitiated).async {
-                    SFSpeechRecognizer.requestAuthorization { cont.resume(returning: $0) }
-                }
-            }
-            statuses[kind] = mapSpeech(status)
         case .calendar:
             do {
                 let granted = try await EKEventStore().requestFullAccessToEvents()
@@ -129,10 +114,6 @@ final class PermissionsManager: ObservableObject {
         }
     }
 
-    nonisolated func currentSpeechStatus() -> PermissionStatus {
-        return mapSpeech(SFSpeechRecognizer.authorizationStatus())
-    }
-
     nonisolated func currentCalendarStatus() -> PermissionStatus {
         switch EKEventStore.authorizationStatus(for: .event) {
         case .notDetermined: return .notDetermined
@@ -155,15 +136,6 @@ final class PermissionsManager: ObservableObject {
     }
 
     // MARK: - Helpers
-
-    nonisolated func mapSpeech(_ status: SFSpeechRecognizerAuthorizationStatus) -> PermissionStatus {
-        switch status {
-        case .notDetermined: return .notDetermined
-        case .authorized: return .granted
-        case .denied, .restricted: return .denied
-        @unknown default: return .notDetermined
-        }
-    }
 
     private func openSystemScreenRecordingSettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {

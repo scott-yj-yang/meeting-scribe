@@ -120,8 +120,6 @@ struct WelcomeView: View {
         switch kind {
         case .microphone:
             urlString = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
-        case .speechRecognition:
-            urlString = "x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition"
         case .calendar:
             urlString = "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars"
         case .screenRecording:

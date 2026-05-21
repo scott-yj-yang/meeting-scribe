@@ -30,8 +30,6 @@
     <string>MeetingScribe records your microphone to transcribe meetings locally.</string>
     <key>NSCalendarsUsageDescription</key>
     <string>MeetingScribe reads your calendar to suggest meetings to record.</string>
-    <key>NSSpeechRecognitionUsageDescription</key>
-    <string>MeetingScribe runs on-device speech recognition for the live preview.</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <!--
