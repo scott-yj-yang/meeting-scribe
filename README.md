@@ -67,6 +67,30 @@ update symlink, and Postgres DB. **Your recordings under
 After migration, install the new app via [GitHub Releases](https://github.com/scott-yj-yang/meeting-scribe/releases/latest)
 once the DMG is published.
 
+## Installing the DMG
+
+Once a release is published, download the latest `MeetingScribe-X.Y.Z.dmg`
+from [GitHub Releases](https://github.com/scott-yj-yang/meeting-scribe/releases/latest),
+double-click to open, and drag **MeetingScribe.app** to your Applications folder.
+
+**First launch (one-time per machine):** macOS will show
+*"MeetingScribe.app cannot be opened because the developer cannot be verified."*
+This is expected — current builds are ad-hoc signed, not notarized.
+
+To proceed:
+
+1. Right-click `MeetingScribe.app` in `/Applications/` → **Open**
+2. Click **Open** in the warning dialog
+
+Or from Terminal:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/MeetingScribe.app
+```
+
+**Requirements:** Apple Silicon Mac (M1 or later), macOS 14 (Sonoma) or later.
+Intel Macs are not supported by this build.
+
 ## Setup
 
 ### Requirements
