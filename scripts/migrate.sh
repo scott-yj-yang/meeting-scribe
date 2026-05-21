@@ -97,3 +97,24 @@ for port in 3000 3001; do
         fi
     fi
 done
+
+step "2/6" "Removing old MeetingScribe.app..."
+
+osascript -e 'tell application "MeetingScribe" to quit' 2>/dev/null || true
+sleep 1
+
+REMOVED_APP=false
+for APP_PATH in "$HOME/Applications/MeetingScribe.app" "/Applications/MeetingScribe.app"; do
+    if [[ -d "$APP_PATH" ]]; then
+        if confirm "Remove $APP_PATH?"; then
+            rm -rf "$APP_PATH"
+            ok "Removed $APP_PATH"
+            REMOVED_APP=true
+        else
+            skip "Kept $APP_PATH"
+        fi
+    fi
+done
+if ! $REMOVED_APP && [[ ! -d "$HOME/Applications/MeetingScribe.app" ]] && [[ ! -d "/Applications/MeetingScribe.app" ]]; then
+    skip "No MeetingScribe.app installed"
+fi
