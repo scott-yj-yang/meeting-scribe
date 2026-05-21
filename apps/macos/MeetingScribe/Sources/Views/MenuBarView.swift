@@ -373,7 +373,7 @@ struct MenuBarView: View {
                         }
                         Spacer()
                         Button {
-                            appState.toggleLiveTranscriptCheck()
+                            appState.toggleLiveTranscript()
                         } label: {
                             Text("Hide")
                                 .font(.system(size: 9))
@@ -382,8 +382,8 @@ struct MenuBarView: View {
                         .buttonStyle(.borderless)
                     }
 
-                    if !appState.transcriptionManager.liveText.isEmpty {
-                        Text(appState.transcriptionManager.liveText)
+                    if !appState.liveTranscriber.liveText.isEmpty {
+                        Text(appState.liveTranscriber.liveText)
                             .font(.system(.caption, design: .rounded))
                             .foregroundStyle(.primary)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -412,7 +412,7 @@ struct MenuBarView: View {
             } else {
                 // Show "check audio" button when live transcript is off
                 Button {
-                    appState.toggleLiveTranscriptCheck()
+                    appState.toggleLiveTranscript()
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "waveform")

@@ -143,7 +143,7 @@ struct RecordingModeView: View {
             guard let appState = appState else {
                 return ChatMessage(role: .system, text: "")
             }
-            let rawTranscript = appState.transcriptionManager.liveText
+            let rawTranscript = appState.liveTranscriber.liveText
             let transcriptForPrompt: String
             if let err = appState.liveTranscriptError {
                 transcriptForPrompt = "(Live transcription unavailable: \(err). Answer based on the meeting title and user notes only; if the user asks about what was said, explain that live transcription isn't running.)"

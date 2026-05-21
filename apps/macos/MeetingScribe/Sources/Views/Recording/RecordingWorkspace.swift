@@ -21,7 +21,7 @@ struct RecordingWorkspace: View {
                 if appState.liveTranscriptEnabled && !appState.showLiveChatPanel {
                     Divider()
                     LiveTranscriptPane(
-                        transcriptionManager: appState.transcriptionManager,
+                        liveTranscriber: appState.liveTranscriber,
                         liveTranscriptError: appState.liveTranscriptError,
                         onChunkClick: { chunk in
                             let stamp = "[\(TimestampFormatter.format(chunk.startTime))] "

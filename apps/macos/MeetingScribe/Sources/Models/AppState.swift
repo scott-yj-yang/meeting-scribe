@@ -1,5 +1,7 @@
 import Foundation
 import SwiftUI
+import AVFoundation
+import CoreMedia
 
 @MainActor
 class AppState: ObservableObject {
@@ -27,18 +29,13 @@ class AppState: ObservableObject {
 
     @AppStorage("outputDirectory") var outputDirectory = "~/MeetingScribe"
     @AppStorage("saveAudio") var saveAudio = true
-    // Live transcription (SFSpeechRecognizer) runs an always-on recognition
-    // task with a 300ms restart loop during recording. That's heavy on CPU
-    // and on-device quality is inconsistent for multi-speaker meetings.
-    // Default off — post-recording whisper-cpp transcription is the primary
-    // path and is higher quality. Users who want live Q&A context can turn
-    // it back on in Settings → Setup.
-    @AppStorage("liveTranscriptEnabled") var liveTranscriptEnabled = false
+    // Defaults to true. Toggled in Settings → Setup. Read at recording start;
+    // runtime toggle via toggleLiveTranscript() also supported.
+    @AppStorage("liveTranscriptEnabled") var liveTranscriptEnabled = true
 
     @Published var liveTranscriptActive = false
     @Published var liveTranscriptError: String? = nil  // Set when setup() throws; surfaced to chat panel
     @Published var audioLevel: Float = 0  // 0.0 - 1.0, shows mic is receiving audio
-    private var liveTranscriptTimer: Timer?
 
     // MARK: - Live chat during recording
     @Published var showLiveChatPanel: Bool = false
@@ -51,7 +48,7 @@ class AppState: ObservableObject {
     private var timer: Timer?
     private var recordingStartDate: Date?
     let audioCaptureManager = AudioCaptureManager()
-    let transcriptionManager = TranscriptionManager()
+    let liveTranscriber = LiveTranscriber()
     private var audioFileWriter: AudioFileWriter?
     private let whisperProcessor = WhisperPostProcessor()
 
@@ -85,128 +82,54 @@ class AppState: ObservableObject {
         }
     }
 
-    func toggleLiveTranscriptCheck() {
-        if liveTranscriptActive {
-            disableLiveTranscript()
-        } else {
-            enableLiveTranscriptTemporarily()
-        }
-    }
-
-    /// Toggles `liveTranscriptEnabled` and starts/stops the recognizer
+    /// Toggles `liveTranscriptEnabled` and starts/stops the transcriber
     /// mid-recording. Called by the transcript-toggle button in
     /// `RecordingTopBar`.
     func toggleLiveTranscript() {
         liveTranscriptEnabled.toggle()
         guard isRecording else { return }
         if liveTranscriptEnabled {
-            // Mirror openLiveChatPanel(): start the recognizer mid-recording.
-            Task { [weak self] in
-                guard let self = self else { return }
-                do {
-                    try await self.transcriptionManager.setup()
-                    self.liveTranscriptActive = true
-                    self.liveTranscriptError = nil
-                } catch {
-                    self.liveTranscriptActive = false
-                    self.liveTranscriptError = error.localizedDescription
-                }
-            }
+            liveTranscriber.start()
+            liveTranscriptActive = liveTranscriber.isAvailable
+            liveTranscriptError = liveTranscriber.lastError
         } else {
-            transcriptionManager.reset()
+            liveTranscriber.stop()
             liveTranscriptActive = false
             liveTranscriptError = nil
         }
     }
 
-    private func enableLiveTranscriptTemporarily() {
-        liveTranscriptActive = true
-        liveTranscriptTimer?.invalidate()
-        liveTranscriptTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: false) { [weak self] _ in
-            Task { @MainActor in
-                guard let self = self else { return }
-                // Don't reset if the chat panel is open — the user needs the full transcript
-                guard !self.showLiveChatPanel else { return }
-                self.liveTranscriptActive = false
-                self.transcriptionManager.reset()
-            }
-        }
-    }
-
-    private func disableLiveTranscript() {
-        liveTranscriptActive = false
-        liveTranscriptTimer?.invalidate()
-        liveTranscriptTimer = nil
-        transcriptionManager.reset()
-    }
-
     func openLiveChatPanel() {
         showLiveChatPanel = true
-        liveTranscriptTimer?.invalidate()
-        liveTranscriptTimer = nil
-
-        // If the user has live transcription disabled, don't silently re-enable
-        // it — chat has no transcript context until the recording stops and
-        // whisper runs. (A future enhancement: snapshot the in-flight WAV and
-        // run whisper on demand here.)
-        guard liveTranscriptEnabled else { return }
-
-        // If transcription was torn down (e.g. by a prior audio-check timeout),
-        // bring it back up so the live chat panel has a transcript to work with.
+        // No timer to cancel anymore. Live transcript runs the full recording
+        // when liveTranscriptEnabled. If it isn't running and the user wants
+        // it now, they can flip it from the recording top bar.
+        guard liveTranscriptEnabled, isRecording, liveTranscriber.isAvailable else { return }
         if !liveTranscriptActive {
-            Task { [weak self] in
-                guard let self = self else { return }
-                do {
-                    try await self.transcriptionManager.setup()
-                    self.liveTranscriptActive = true
-                    self.liveTranscriptError = nil
-                } catch {
-                    print("[Chat] Failed to restart live transcript: \(error.localizedDescription)")
-                    self.liveTranscriptActive = false
-                    self.liveTranscriptError = error.localizedDescription
-                }
-            }
+            liveTranscriber.start()
+            liveTranscriptActive = liveTranscriber.isAvailable
+            liveTranscriptError = liveTranscriber.lastError
         }
     }
 
     func closeLiveChatPanel() {
         showLiveChatPanel = false
-        // Let the regular 60s timer rearm — restart it fresh
-        if isRecording {
-            enableLiveTranscriptTemporarily()
-        }
+        // Live transcript continues running; no timer to rearm anymore.
     }
 
     private func doStartRecording() async {
         let startDate = Date()
 
         do {
-            // Try live transcript — non-fatal if it fails. Skipped entirely
-            // when the user has disabled it in settings: that saves ~1 CPU
-            // core during recording from the always-on SFSpeechRecognizer
-            // restart loop, and avoids the unreliable on-device partials.
             if liveTranscriptEnabled {
-                do {
-                    try await transcriptionManager.setup()
-                    liveTranscriptActive = true
-                    liveTranscriptError = nil
-                    // No 60-second reset during recording — live transcription runs for the
-                    // entire meeting so mid-meeting chat and post-recording snippet preview
-                    // have the full transcript buffer.
-                } catch {
-                    print("[Recording] Live transcript unavailable: \(error.localizedDescription)")
-                    // Surface the failure instead of pretending transcription is running.
-                    // Audio capture and level meter still work; whisper post-processing still
-                    // runs on stop. Only the live Q&A context is affected.
-                    liveTranscriptActive = false
-                    liveTranscriptError = error.localizedDescription
-                }
+                liveTranscriber.start()
+                liveTranscriptActive = liveTranscriber.isAvailable
+                liveTranscriptError = liveTranscriber.lastError
             } else {
                 liveTranscriptActive = false
                 liveTranscriptError = nil
             }
 
-            let transcriber = transcriptionManager
             let title = meetingTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? "Meeting \(startDate.formatted(.dateTime.month().day().hour().minute()))"
                 : meetingTitle.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -241,9 +164,10 @@ class AppState: ObservableObject {
                 let capturedLevel = level
 
                 Task { @MainActor in
-                    self?.audioLevel = capturedLevel
-                    if self?.liveTranscriptActive == true {
-                        transcriber.processAudioBuffer(buffer, speaker: "Local")
+                    guard let self = self else { return }
+                    self.audioLevel = capturedLevel
+                    if self.liveTranscriptActive, let format = self.audioCaptureManager.micFormat {
+                        self.liveTranscriber.appendMic(buffer, format: format)
                     }
                 }
             }
@@ -251,8 +175,9 @@ class AppState: ObservableObject {
                 nonisolated(unsafe) let sampleBuffer = sampleBuffer
                 writer.writeSystemAudio(sampleBuffer: sampleBuffer)
                 Task { @MainActor in
-                    if self?.liveTranscriptActive == true {
-                        transcriber.processSampleBuffer(sampleBuffer, speaker: "Remote")
+                    guard let self = self, self.liveTranscriptActive else { return }
+                    if let pcm = Self.pcmBuffer(from: sampleBuffer) {
+                        self.liveTranscriber.appendSystem(pcm.buffer, format: pcm.format)
                     }
                 }
             }
@@ -318,8 +243,6 @@ class AppState: ObservableObject {
 
         timer?.invalidate()
         timer = nil
-        liveTranscriptTimer?.invalidate()
-        liveTranscriptTimer = nil
         liveTranscriptActive = false
 
         // === Phase 2: Finalize audio. This must complete before a new
@@ -329,7 +252,7 @@ class AppState: ObservableObject {
         isFinalizingPreviousRecording = true
 
         await audioCaptureManager.stopCapture()
-        transcriptionManager.reset()
+        liveTranscriber.stop()
         isRecording = false
 
         let audioURL = writerToFinalize?.stop()
@@ -510,5 +433,37 @@ class AppState: ObservableObject {
         let min = seconds / 60
         let sec = seconds % 60
         return sec > 0 ? "~\(min)m \(sec)s" : "~\(min)m"
+    }
+
+    // MARK: - Audio conversion helpers
+
+    private static func pcmBuffer(from sampleBuffer: CMSampleBuffer) -> (buffer: AVAudioPCMBuffer, format: AVAudioFormat)? {
+        guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer),
+              let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc)?.pointee else { return nil }
+        var asbdMutable = asbd
+        guard let format = AVAudioFormat(streamDescription: &asbdMutable) else { return nil }
+
+        let frameCount = AVAudioFrameCount(CMSampleBufferGetNumSamples(sampleBuffer))
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return nil }
+        buffer.frameLength = frameCount
+
+        guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { return nil }
+        var lengthAtOffset: Int = 0
+        var totalLength: Int = 0
+        var dataPointer: UnsafeMutablePointer<Int8>?
+        let err = CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: &lengthAtOffset, totalLengthOut: &totalLength, dataPointerOut: &dataPointer)
+        guard err == kCMBlockBufferNoErr, let dataPointer else { return nil }
+
+        let bytesPerFrame = Int(format.streamDescription.pointee.mBytesPerFrame)
+        let copyBytes = min(totalLength, Int(frameCount) * bytesPerFrame)
+
+        if let floatChannelData = buffer.floatChannelData {
+            memcpy(floatChannelData[0], dataPointer, copyBytes)
+        } else if let int16ChannelData = buffer.int16ChannelData {
+            memcpy(int16ChannelData[0], dataPointer, copyBytes)
+        } else {
+            return nil
+        }
+        return (buffer, format)
     }
 }
