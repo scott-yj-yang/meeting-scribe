@@ -1,25 +1,28 @@
 import Foundation
 
-/// One finalized chunk from the live `SFSpeechRecognizer` session.
-/// `TranscriptionManager` produces a stream of these as recognition sessions
-/// finalize (~once per minute due to SFSpeechRecognizer's native session limit).
-///
-/// The in-flight (not-yet-finalized) text is exposed separately by
-/// `TranscriptionManager.currentSessionText`; consumers that want the full
-/// running text can read `liveText` (which already concatenates chunks +
-/// in-flight text and is unchanged by this work).
+/// One finalized whisper-transcribed audio segment from a live recording.
+/// Produced by `LiveTranscriber` every ~5s for each captured source.
 struct LiveTranscriptChunk: Identifiable, Equatable, Sendable {
     let id: UUID
     let text: String
-    /// Seconds since recording start when this chunk's session began.
+    /// Seconds since recording start when this chunk's audio began.
     let startTime: TimeInterval
-    /// Seconds since recording start when this chunk's session finalized.
+    /// Seconds since recording start when this chunk's audio ended.
     let endTime: TimeInterval
+    /// "Me" for mic audio, "Others" for system audio, "" for unknown.
+    let speaker: String
 
-    init(id: UUID = UUID(), text: String, startTime: TimeInterval, endTime: TimeInterval) {
+    init(
+        id: UUID = UUID(),
+        text: String,
+        startTime: TimeInterval,
+        endTime: TimeInterval,
+        speaker: String = ""
+    ) {
         self.id = id
         self.text = text
         self.startTime = startTime
         self.endTime = endTime
+        self.speaker = speaker
     }
 }
