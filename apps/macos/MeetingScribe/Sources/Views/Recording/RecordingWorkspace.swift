@@ -12,6 +12,11 @@ struct RecordingWorkspace: View {
                 RecordingTopBar()
                 MarkdownNotesEditor(text: $appState.meetingNotes)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        // Spacer matches the floating Stop button's footprint so
+                        // notes content can scroll past the visual bottom edge.
+                        Color.clear.frame(height: 96)
+                    }
             }
 
             StopRecordingButton()

@@ -304,9 +304,17 @@ struct RecordingModeView: View {
                     .fontWeight(.semibold)
             }
 
-            Text("Opening meeting details...")
-                .font(.subheadline)
-                .foregroundStyle(.tertiary)
+            Button {
+                if let meeting = appState.lastCompletedMeeting {
+                    appState.showMeetingSummary(meeting)
+                }
+            } label: {
+                Label("View Meeting", systemImage: "arrow.right.circle.fill")
+                    .font(.body.weight(.semibold))
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .padding(.top, 12)
         }
     }
 

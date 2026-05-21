@@ -49,16 +49,9 @@ struct NativeDashboard: View {
             Task { await appState.calendarManager.fetchCurrentAndUpcoming() }
         }
         .onChange(of: appState.lastCompletedMeeting) { _, newMeeting in
-            if let meeting = newMeeting {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        selectedMeeting = meeting
-                        showRecordingMode = false
-                        appState.lastCompletedMeeting = nil
-                        appState.showPostRecording = false
-                    }
-                }
-            }
+            // No automatic navigation — the user chooses when to view the
+            // meeting via the explicit "View Meeting" button in completedView.
+            _ = newMeeting
         }
     }
 

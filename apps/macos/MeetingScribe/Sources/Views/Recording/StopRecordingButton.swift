@@ -6,6 +6,7 @@ import AppKit
 /// 3 seconds actually stops. Auto-disarms after 3s of inactivity. Hover
 /// scales + glows.
 struct StopRecordingButton: View {
+    var compact: Bool = false
     @EnvironmentObject var appState: AppState
     @State private var phase: Phase = .idle
     @State private var revertTask: Task<Void, Never>?
@@ -20,13 +21,13 @@ struct StopRecordingButton: View {
         Button(action: handleTap) {
             HStack(spacing: 10) {
                 Image(systemName: phase == .idle ? "stop.fill" : "exclamationmark.circle.fill")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: compact ? 15 : 18, weight: .semibold))
                     .symbolEffect(.pulse, options: phase == .confirming ? .repeating : .nonRepeating, value: phase)
                 Text(phase == .idle ? "Stop Recording" : "Tap again to confirm")
-                    .font(.system(.body, design: .rounded, weight: .semibold))
+                    .font(.system(compact ? .callout : .body, design: .rounded, weight: .semibold))
             }
-            .padding(.horizontal, 28)
-            .padding(.vertical, 14)
+            .padding(.horizontal, compact ? 18 : 28)
+            .padding(.vertical, compact ? 10 : 14)
             .foregroundStyle(.white)
             .background(
                 Capsule()

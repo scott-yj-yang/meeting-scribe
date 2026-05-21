@@ -454,22 +454,9 @@ struct MenuBarView: View {
             }
             .padding(.top, 4)
 
-            // Stop button
-            Button {
-                appState.toggleRecording()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "stop.circle.fill")
-                        .font(.system(size: 18))
-                    Text("Stop Recording")
-                        .font(.body.weight(.semibold))
-                }
+            // Stop button — reuses two-click confirm component for consistency
+            StopRecordingButton(compact: true)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .tint(.gray)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
