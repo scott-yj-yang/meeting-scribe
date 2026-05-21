@@ -53,8 +53,11 @@ struct WelcomeView: View {
                                 openSystemSettings(for: kind)
                             }
                         )
+                        .animation(AppAnim.standard, value: permissions.statuses[kind]?.isGranted)
                     }
                 }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+                .animation(AppAnim.viewTransition.delay(0.05), value: permissions.statuses.count)
 
                 transcriptionSection
             }

@@ -145,7 +145,7 @@ struct MenuBarView: View {
                     HStack(spacing: 5) {
                         ForEach(meetingTypes, id: \.self) { type in
                             Button {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                withAnimation(AppAnim.standard) {
                                     if appState.selectedMeetingType == type {
                                         appState.selectedMeetingType = nil
                                     } else {
@@ -169,7 +169,7 @@ struct MenuBarView: View {
                                             : .secondary
                                     )
                                     .cornerRadius(10)
-                                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: appState.selectedMeetingType)
+                                    .animation(AppAnim.standard, value: appState.selectedMeetingType)
                             }
                             .buttonStyle(.plain)
                             .onHover { hovering in
@@ -391,7 +391,7 @@ struct MenuBarView: View {
                         .font(.system(size: 9))
                         .foregroundStyle(.tertiary)
                 }
-                .animation(.linear(duration: 0.03), value: appState.audioLevel)
+                .animation(AppAnim.levelMeter, value: appState.audioLevel)
             }
             .padding(8)
             .background(Color.green.opacity(0.06))

@@ -17,21 +17,25 @@ struct RecordingModeView: View {
     }
 
     var body: some View {
-        VStack {
+        ZStack {
             if appState.showPostRecording {
                 postRecordingPhase
                     .transition(.opacity)
             } else if appState.isRecording {
                 recordingPhase
-                    .transition(.opacity)
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .move(edge: .top)),
+                        removal: .opacity
+                    ))
             } else {
                 preRecordingPhase
                     .transition(.opacity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .animation(.easeInOut(duration: 0.35), value: appState.isRecording)
-        .animation(.easeInOut(duration: 0.35), value: appState.showPostRecording)
+        .animation(AppAnim.viewTransition, value: appState.isRecording)
+        .animation(AppAnim.viewTransition, value: appState.showPostRecording)
+        .animation(AppAnim.viewTransition, value: appState.isTranscribing)
     }
 
     // MARK: - Phase 1: Pre-recording
@@ -188,11 +192,13 @@ struct RecordingModeView: View {
     // MARK: - Phase 3: Post-recording
 
     private var postRecordingPhase: some View {
-        VStack(spacing: 20) {
+        ZStack {
             if appState.isTranscribing {
                 transcribingCard
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
             } else {
                 completedView
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -324,7 +330,7 @@ struct RecordingModeView: View {
         HStack(spacing: 6) {
             ForEach(meetingTypes, id: \.self) { type in
                 Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    withAnimation(AppAnim.standard) {
                         if appState.selectedMeetingType == type {
                             appState.selectedMeetingType = nil
                         } else {
@@ -347,7 +353,7 @@ struct RecordingModeView: View {
                                 : .secondary
                         )
                         .cornerRadius(12)
-                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: appState.selectedMeetingType)
+                        .animation(AppAnim.standard, value: appState.selectedMeetingType)
                 }
                 .buttonStyle(.plain)
                 .onHover { hovering in

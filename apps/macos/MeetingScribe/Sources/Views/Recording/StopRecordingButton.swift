@@ -11,6 +11,7 @@ struct StopRecordingButton: View {
     @State private var phase: Phase = .idle
     @State private var revertTask: Task<Void, Never>?
     @State private var isHovered = false
+    @State private var confirmProgress: CGFloat = 1.0
 
     private enum Phase {
         case idle
@@ -38,9 +39,21 @@ struct StopRecordingButton: View {
                         x: 0, y: 4
                     )
             )
+            .overlay(alignment: .leading) {
+                if phase == .confirming {
+                    Capsule()
+                        .fill(Color.white.opacity(0.25))
+                        .frame(width: max(0, confirmProgress * 200), height: 4)
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 4)
+                        .frame(maxHeight: .infinity, alignment: .bottom)
+                        .transition(.opacity)
+                        .allowsHitTesting(false)
+                }
+            }
             .scaleEffect(isHovered ? 1.04 : 1.0)
-            .animation(.easeInOut(duration: 0.18), value: isHovered)
-            .animation(.spring(response: 0.32, dampingFraction: 0.65), value: phase)
+            .animation(AppAnim.snappy, value: isHovered)
+            .animation(AppAnim.standard, value: phase)
         }
         .buttonStyle(.plain)
         .onHover { hovering in
@@ -59,12 +72,17 @@ struct StopRecordingButton: View {
     private func handleTap() {
         switch phase {
         case .idle:
-            withAnimation { phase = .confirming }
+            withAnimation(AppAnim.standard) { phase = .confirming }
+            confirmProgress = 1.0
+            withAnimation(.linear(duration: 3.0)) {
+                confirmProgress = 0.0
+            }
             revertTask?.cancel()
             revertTask = Task { @MainActor in
                 try? await Task.sleep(for: .seconds(3))
                 if !Task.isCancelled {
-                    withAnimation { phase = .idle }
+                    withAnimation(AppAnim.standard) { phase = .idle }
+                    confirmProgress = 1.0
                 }
             }
         case .confirming:

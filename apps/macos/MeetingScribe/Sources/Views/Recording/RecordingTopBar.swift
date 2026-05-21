@@ -10,7 +10,12 @@ struct RecordingTopBar: View {
         HStack(spacing: 10) {
             // Recording indicator
             HStack(spacing: 6) {
-                Circle().fill(.red).frame(width: 7, height: 7)
+                Circle()
+                    .fill(.red)
+                    .frame(width: 7, height: 7)
+                    .scaleEffect(appState.isRecording ? 1.0 : 0.85)
+                    .opacity(appState.isRecording ? 1.0 : 0.5)
+                    .animation(AppAnim.breathe, value: appState.isRecording)
                 Text(formatDuration(appState.recordingDuration))
                     .font(.system(.callout, design: .monospaced))
                     .foregroundStyle(.primary)
@@ -84,6 +89,7 @@ struct RecordingTopBar: View {
                     .frame(width: 4, height: 4)
             }
         }
+        .animation(AppAnim.levelMeter, value: appState.audioLevel)
     }
 
     private func dotColor(for index: Int) -> Color {

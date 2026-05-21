@@ -42,6 +42,11 @@ struct MeetingListContent: View {
                 ForEach(meetings) { meeting in
                     MeetingRow(meeting: meeting)
                         .tag(meeting)
+                        .animation(AppAnim.standard, value: filtered.count)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .top).combined(with: .opacity),
+                            removal: .move(edge: .leading).combined(with: .opacity)
+                        ))
                         .contextMenu {
                             Button(role: .destructive) {
                                 onDelete?(meeting)

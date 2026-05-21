@@ -14,6 +14,7 @@ struct ClickableHoverModifier: ViewModifier {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(Color.primary.opacity(isHovering ? highlightOpacity : 0))
             )
+            .animation(AppAnim.snappy, value: isHovering)
             .onHover { hovering in
                 isHovering = hovering
                 if hovering {

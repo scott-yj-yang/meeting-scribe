@@ -43,7 +43,7 @@ struct NativeDashboard: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(.easeInOut(duration: 0.4), value: isRecordingMode)
+        .animation(AppAnim.viewTransition, value: isRecordingMode)
         .onAppear {
             appState.meetingStore.loadAll()
             Task { await appState.calendarManager.fetchCurrentAndUpcoming() }
@@ -137,6 +137,9 @@ struct NativeDashboard: View {
         } detail: {
             if let meeting = selectedMeeting {
                 MeetingDetailView(meeting: meeting, meetingStore: appState.meetingStore)
+                    .id(meeting.id)
+                    .transition(.opacity)
+                    .animation(AppAnim.viewTransition, value: meeting.id)
             } else {
                 ContentUnavailableView {
                     Label("No Meeting Selected", systemImage: "waveform.badge.mic")
@@ -150,8 +153,10 @@ struct NativeDashboard: View {
                     }
                     .buttonStyle(.borderedProminent)
                 }
+                .transition(.opacity)
             }
         }
+        .animation(AppAnim.viewTransition, value: selectedMeeting?.id)
     }
 
     // MARK: - Recording Mode

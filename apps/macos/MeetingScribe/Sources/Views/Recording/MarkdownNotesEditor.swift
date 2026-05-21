@@ -31,6 +31,8 @@ struct MarkdownNotesEditor: View {
                 .padding(.horizontal, 36)
                 .padding(.top, 32)
                 .allowsHitTesting(false)
+                .transition(.opacity)
+                .animation(AppAnim.standard, value: text.isEmpty)
             }
         }
     }
