@@ -86,9 +86,10 @@ else
 fi
 
 for port in 3000 3001; do
-    PIDS=$(lsof -ti :$port 2>/dev/null || true)
+    PIDS=$(lsof -ti :"$port" 2>/dev/null || true)
     if [[ -n "$PIDS" ]]; then
-        if confirm "Port $port is in use (PIDs: $PIDS). Kill?"; then
+        PNAMES=$(ps -p "$(echo "$PIDS" | tr '\n' ',' | sed 's/,$//')" -o comm= 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+        if confirm "Port $port held by [$PNAMES] (PIDs: $(echo "$PIDS" | tr '\n' ' ')). Kill?"; then
             echo "$PIDS" | xargs kill -9 2>/dev/null || true
             ok "Freed port $port"
         else
