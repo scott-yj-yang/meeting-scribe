@@ -7,7 +7,38 @@ import AppKit
 ///
 /// Styling (via `MarkdownStyler`) and the slash-command menu are added in
 /// follow-up tasks.
-struct MarkdownNotesEditor: NSViewRepresentable {
+struct MarkdownNotesEditor: View {
+    @Binding var text: String
+    /// Optional outbound binding so parents can hold a reference to the
+    /// coordinator and call `insertAtCaret(_:)` from external views (e.g.
+    /// the transcript pane click handler).
+    var coordinatorRef: Binding<MarkdownNotesEditorRepresentable.Coordinator?>? = nil
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            MarkdownNotesEditorRepresentable(text: $text, coordinatorRef: coordinatorRef)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if text.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Jot down notes here")
+                        .font(.system(.title3, design: .rounded, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                    Text("Anything you type is saved alongside the transcript. Click any live-transcribed chunk after recording stops to insert its timestamp.")
+                        .font(.callout)
+                        .foregroundStyle(.quaternary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 36)
+                .padding(.top, 32)
+                .allowsHitTesting(false)
+            }
+        }
+    }
+}
+
+// MARK: - NSViewRepresentable
+
+struct MarkdownNotesEditorRepresentable: NSViewRepresentable {
     @Binding var text: String
     /// Optional outbound binding so parents can hold a reference to the
     /// coordinator and call `insertAtCaret(_:)` from external views (e.g.
@@ -71,12 +102,12 @@ struct MarkdownNotesEditor: NSViewRepresentable {
 
     @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
-        var parent: MarkdownNotesEditor
+        var parent: MarkdownNotesEditorRepresentable
         weak var textView: NSTextView?
         private let slashMenu = SlashCommandMenuController()
         private var pendingSlashLocation: Int?
 
-        init(_ parent: MarkdownNotesEditor) {
+        init(_ parent: MarkdownNotesEditorRepresentable) {
             self.parent = parent
         }
 

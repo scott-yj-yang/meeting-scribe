@@ -60,26 +60,6 @@ struct RecordingTopBar: View {
 
             // Audio level dots
             audioLevelDots
-
-            // Stop button — outline style, far from notes
-            Button {
-                appState.toggleRecording()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "stop.fill")
-                        .font(.system(size: 14))
-                    Text("Stop")
-                        .font(.callout.weight(.semibold))
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .foregroundStyle(.white)
-                .background(
-                    Capsule().fill(Color.red)
-                )
-            }
-            .buttonStyle(.plain)
-            .help("Stop recording")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
