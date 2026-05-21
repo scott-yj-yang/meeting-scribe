@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import MarkdownUI
 
@@ -67,8 +68,15 @@ struct NativeSummaryView: View {
                         Picker("Template", selection: $selectedTemplate) {
                             ForEach(templates, id: \.0) { id, label in Text(label).tag(id) }
                         }.pickerStyle(.menu).frame(width: 200)
-                        Button("Open in Claude Code") { revealInFinder() }
-                            .buttonStyle(.bordered)
+                        Button("Open in Claude Code") {
+                            if let dir = meeting.directoryURL { openInClaudeCode(at: dir) }
+                        }
+                        .buttonStyle(.bordered)
+                        Button("Show in Finder") {
+                            revealInFinder()
+                        }
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
                         if providerAvailable {
                             Button("Resummarize with Ollama") { runSummarization() }.buttonStyle(.bordered)
                         }
@@ -93,13 +101,23 @@ struct NativeSummaryView: View {
                     Text("No summary yet").font(.headline).foregroundStyle(.secondary)
 
                     VStack(spacing: 8) {
-                        Button("Open in Claude Code") { revealInFinder() }
-                            .buttonStyle(.borderedProminent).controlSize(.large)
-                        Text("Reveals the meeting folder. Open it in Claude Code and run `/summarize` — the summary will load here automatically.")
+                        Button("Open in Claude Code") {
+                            if let dir = meeting.directoryURL { openInClaudeCode(at: dir) }
+                        }
+                        .buttonStyle(.borderedProminent).controlSize(.large)
+                        Text("Opens Claude Code in Terminal at this meeting folder. Type /summarize and the summary will appear here automatically.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: 360)
+                        Button {
+                            revealInFinder()
+                        } label: {
+                            Label("Show in Finder", systemImage: "folder")
+                        }
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
+                        .padding(.top, 4)
                     }
 
                     if providerAvailable {
@@ -156,6 +174,32 @@ struct NativeSummaryView: View {
     private func revealInFinder() {
         guard let dir = meeting.directoryURL else { return }
         NSWorkspace.shared.activateFileViewerSelecting([dir])
+    }
+
+    private func openInClaudeCode(at dir: URL) {
+        // Try to launch Terminal.app and run `claude` in the meeting directory.
+        // If claude isn't on PATH, the terminal will say "command not found" —
+        // the user can install Claude Code (https://claude.com/claude-code) and try again.
+        let escapedPath = dir.path
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+
+        let script = """
+        tell application "Terminal"
+            activate
+            do script "cd \\"\(escapedPath)\\" && claude"
+        end tell
+        """
+
+        var error: NSDictionary?
+        if let apple = NSAppleScript(source: script) {
+            apple.executeAndReturnError(&error)
+        }
+        if let error {
+            // If AppleScript fails, fall back to revealing in Finder.
+            print("[NativeSummaryView] openInClaudeCode AppleScript failed: \(error)")
+            NSWorkspace.shared.activateFileViewerSelecting([dir])
+        }
     }
 
     private func scheduleSave(_ text: String) {

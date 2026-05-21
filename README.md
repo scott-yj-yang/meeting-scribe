@@ -103,10 +103,11 @@ Intel Macs are not supported by this build.
 Two ways to get a summary:
 
 - **Claude Code (recommended)** — every meeting folder ships with a `CLAUDE.md`
-  and a `/summarize` slash command. From the macOS app, click "Open in Claude
-  Code"; the meeting folder opens in Finder. Then `cd` there, run `claude`,
-  and type `/summarize`. The summary panel reloads automatically as soon as
-  Claude writes `summary.md`.
+  and a `/summarize` slash command. From the macOS app, click **"Open in Claude
+  Code"** on the meeting panel; Terminal opens at the meeting folder and runs
+  `claude` automatically. Type `/summarize` and the summary panel reloads as
+  soon as Claude writes `summary.md`. Requires [Claude Code](https://claude.com/claude-code)
+  installed (`claude` on PATH).
 - **Ollama (fully local, automatic)**: `./scripts/install-ollama.sh` —
   click "Summarize with Ollama" in the panel for an automatic in-app summary,
   no API key needed.
