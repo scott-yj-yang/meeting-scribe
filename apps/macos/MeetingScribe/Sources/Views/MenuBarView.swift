@@ -312,17 +312,18 @@ struct MenuBarView: View {
             Button {
                 appState.toggleRecording()
             } label: {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Image(systemName: "mic.circle.fill")
-                        .font(.system(size: 15))
+                        .font(.system(size: 22))
                         .symbolEffect(.pulse, options: .speed(0.5))
-                    Text("Start Session")
-                        .font(.system(.caption, design: .rounded, weight: .semibold))
+                    Text("Start Recording")
+                        .font(.system(.body, design: .rounded, weight: .semibold))
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
+                .padding(.vertical, 12)
             }
             .buttonStyle(.borderedProminent)
+            .controlSize(.large)
             .tint(.blue)
             .padding(.horizontal, 16)
             .padding(.bottom, 10)
@@ -438,16 +439,17 @@ struct MenuBarView: View {
             Button {
                 appState.toggleRecording()
             } label: {
-                HStack {
+                HStack(spacing: 8) {
                     Image(systemName: "stop.circle.fill")
-                        .font(.system(size: 14))
+                        .font(.system(size: 18))
                     Text("Stop Recording")
-                        .font(.system(.caption, design: .rounded, weight: .semibold))
+                        .font(.body.weight(.semibold))
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
+                .padding(.vertical, 12)
             }
             .buttonStyle(.borderedProminent)
+            .controlSize(.large)
             .tint(.gray)
         }
         .padding(.horizontal, 16)

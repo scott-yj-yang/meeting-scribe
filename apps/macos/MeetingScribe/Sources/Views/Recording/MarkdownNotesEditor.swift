@@ -31,7 +31,7 @@ struct MarkdownNotesEditor: NSViewRepresentable {
         textView.textColor = .labelColor
         textView.backgroundColor = .clear
         textView.drawsBackground = false
-        textView.textContainerInset = NSSize(width: 20, height: 16)
+        textView.textContainerInset = NSSize(width: 32, height: 28)
         textView.autoresizingMask = [.width]
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false

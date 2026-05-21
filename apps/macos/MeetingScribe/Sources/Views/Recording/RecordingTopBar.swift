@@ -65,19 +65,21 @@ struct RecordingTopBar: View {
             Button {
                 appState.toggleRecording()
             } label: {
-                HStack(spacing: 4) {
+                HStack(spacing: 6) {
                     Image(systemName: "stop.fill")
+                        .font(.system(size: 14))
                     Text("Stop")
+                        .font(.callout.weight(.semibold))
                 }
-                .font(.caption.weight(.semibold))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .foregroundStyle(.red)
-                .overlay(
-                    Capsule().stroke(Color.red, lineWidth: 1)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .foregroundStyle(.white)
+                .background(
+                    Capsule().fill(Color.red)
                 )
             }
             .buttonStyle(.plain)
+            .help("Stop recording")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
