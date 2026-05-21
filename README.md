@@ -50,6 +50,23 @@ A self-hosted, privacy-first meeting transcription and summary system for macOS.
 5. Transcript saved locally as markdown under `~/MeetingScribe/YYYY/MM-Month/DD-slug/`
 6. Click "Open in Claude Code" to summarize via `/summarize`, or run Ollama locally for an automatic summary
 
+## Upgrading from the old (main branch) install
+
+If you installed MeetingScribe before via the curl one-liner from `main`,
+it set up Postgres, Next.js, and a tmux session. The native-overhaul
+release replaces all of that with a single `.app`. To migrate cleanly:
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/scott-yj-yang/meeting-scribe/feat/native-overhaul/scripts/migrate.sh)"
+```
+
+This interactively removes the old web server, app bundle, CLI symlink,
+update symlink, and Postgres DB. **Your recordings under
+`~/MeetingScribe/` are preserved.**
+
+After migration, install the new app via [GitHub Releases](https://github.com/scott-yj-yang/meeting-scribe/releases/latest)
+once the DMG is published.
+
 ## Setup
 
 ### Requirements
