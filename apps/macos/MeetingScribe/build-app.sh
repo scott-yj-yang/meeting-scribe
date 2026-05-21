@@ -21,6 +21,27 @@ if [ -d "$BIN_DIR/MeetingScribe_MeetingScribe.bundle" ]; then
     cp -R "$BIN_DIR/MeetingScribe_MeetingScribe.bundle" "$APP_DIR/Contents/Resources/"
 fi
 
+# Generate AppIcon.icns from the appiconset PNGs and place into Contents/Resources/
+ICONSET_SRC="$(pwd)/Sources/Resources/AppIcon.appiconset"
+if [ -d "$ICONSET_SRC" ]; then
+    ICONSET_TMP="$(mktemp -d)/AppIcon.iconset"
+    mkdir -p "$ICONSET_TMP"
+    # iconutil requires these exact filenames (point sizes, not pixel sizes).
+    # Mapping: pixel size → iconutil-required name.
+    cp "$ICONSET_SRC/icon_16x16.png"     "$ICONSET_TMP/icon_16x16.png"        # 16px
+    cp "$ICONSET_SRC/icon_32x32.png"     "$ICONSET_TMP/icon_16x16@2x.png"     # 32px
+    cp "$ICONSET_SRC/icon_32x32.png"     "$ICONSET_TMP/icon_32x32.png"        # 32px
+    cp "$ICONSET_SRC/icon_64x64.png"     "$ICONSET_TMP/icon_32x32@2x.png"     # 64px
+    cp "$ICONSET_SRC/icon_128x128.png"   "$ICONSET_TMP/icon_128x128.png"      # 128px
+    cp "$ICONSET_SRC/icon_256x256.png"   "$ICONSET_TMP/icon_128x128@2x.png"   # 256px
+    cp "$ICONSET_SRC/icon_256x256.png"   "$ICONSET_TMP/icon_256x256.png"      # 256px
+    cp "$ICONSET_SRC/icon_512x512.png"   "$ICONSET_TMP/icon_256x256@2x.png"   # 512px
+    cp "$ICONSET_SRC/icon_512x512.png"   "$ICONSET_TMP/icon_512x512.png"      # 512px
+    cp "$ICONSET_SRC/icon_1024x1024.png" "$ICONSET_TMP/icon_512x512@2x.png"   # 1024px
+    iconutil --convert icns "$ICONSET_TMP" --output "$APP_DIR/Contents/Resources/AppIcon.icns"
+    rm -rf "$(dirname "$ICONSET_TMP")"
+fi
+
 # Re-sign the bundle so the Info.plist is bound to the code signature.
 # SwiftPM ad-hoc-signs the bare executable at link time, but that signature
 # seals only the Mach-O binary — it does NOT cover the Contents/Info.plist
