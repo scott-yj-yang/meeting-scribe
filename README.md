@@ -106,8 +106,21 @@ Two ways to get a summary:
   and a `/summarize` slash command. From the macOS app, click **"Open in Claude
   Code"** on the meeting panel; Terminal opens at the meeting folder and runs
   `claude` automatically. Type `/summarize` and the summary panel reloads as
-  soon as Claude writes `summary.md`. Requires [Claude Code](https://claude.com/claude-code)
-  installed (`claude` on PATH).
+  soon as Claude writes `summary.md`.
+
+  **One-time setup for Claude Code:** install the `claude` CLI by running this
+  in Terminal:
+
+  ```bash
+  curl -fsSL https://claude.ai/install.sh | bash
+  ```
+
+  Then quit and reopen Terminal so `claude` is on your PATH. Verify with
+  `claude --version`. Full docs at <https://claude.com/claude-code>.
+
+  First time you click "Open in Claude Code", macOS asks permission to control
+  Terminal — click **OK**. If you denied it, re-grant in System Settings →
+  Privacy & Security → Automation → MeetingScribe → Terminal.
 - **Ollama (fully local, automatic)**: `./scripts/install-ollama.sh` —
   click "Summarize with Ollama" in the panel for an automatic in-app summary,
   no API key needed.
