@@ -23,6 +23,11 @@ class AppState: ObservableObject {
     @Published var currentMeeting: LocalMeeting? = nil
     @Published var lastCompletedMeeting: LocalMeeting? = nil
 
+    /// Non-fatal problem with the recording that just finished — currently, that
+    /// system audio had to be dropped. Shown in the post-recording panel so a
+    /// mic-only recording is never mistaken for a complete one.
+    @Published var lastRecordingWarning: String? = nil
+
     let calendarManager = CalendarManager()
     let meetingStore: MeetingStore
 
@@ -44,6 +49,11 @@ class AppState: ObservableObject {
     let audioCaptureManager = AudioCaptureManager()
     private var audioFileWriter: AudioFileWriter?
     private let whisperProcessor = WhisperPostProcessor()
+
+    /// The folder claimed when the current recording started. Resolved exactly
+    /// once so audio, transcript, notes, and metadata can never end up in
+    /// different directories when the title is edited mid-recording.
+    private var currentMeetingDirectory: URL?
 
     // Serializes post-processing (whisper transcription + markdown + save) so
     // rapid back-to-back recordings don't run two whisper passes concurrently
@@ -77,7 +87,6 @@ class AppState: ObservableObject {
 
     func openLiveChatPanel() {
         showLiveChatPanel = true
-        guard isRecording else { return }
     }
 
     func closeLiveChatPanel() {
@@ -92,7 +101,16 @@ class AppState: ObservableObject {
                 ? "Meeting \(startDate.formatted(.dateTime.month().day().hour().minute()))"
                 : meetingTitle.trimmingCharacters(in: .whitespacesAndNewlines)
 
-            let writer = AudioFileWriter(directory: outputDirectory, title: title, date: startDate)
+            // Claim the meeting folder once, up front, uniquified so a second
+            // meeting with the same title on the same day cannot overwrite the
+            // first. Everything this recording produces goes here.
+            let meetingDir = LocalStorage.uniqueMeetingDirectory(
+                title: title, date: startDate, baseDirectory: outputDirectory
+            )
+            try FileManager.default.createDirectory(at: meetingDir, withIntermediateDirectories: true)
+            currentMeetingDirectory = meetingDir
+
+            let writer = AudioFileWriter(directory: meetingDir)
             self.audioFileWriter = writer
 
             audioCaptureManager.onMicAudio = { [weak self] buffer, time in
@@ -130,11 +148,15 @@ class AppState: ObservableObject {
                 writer.writeSystemAudio(sampleBuffer: sampleBuffer)
             }
 
-            await audioCaptureManager.startCapture()
+            try await audioCaptureManager.startCapture()
 
-            if let format = audioCaptureManager.micFormat {
-                try writer.start(format: format)
+            // The writer must be open before we claim to be recording —
+            // otherwise the whole meeting streams into a file that was never
+            // created and the audio is lost with no indication.
+            guard let format = audioCaptureManager.micFormat else {
+                throw AudioCaptureManager.CaptureError.microphoneUnavailable("no input format available")
             }
+            try writer.start(format: format)
 
             recordingStartDate = startDate
             isRecording = true
@@ -147,7 +169,26 @@ class AppState: ObservableObject {
                 }
             }
         } catch {
-            statusMessage = "Failed: \(error.localizedDescription)"
+            // Tear down so a half-started capture doesn't leave the microphone
+            // running with no way to stop it from the UI.
+            await audioCaptureManager.stopCapture()
+            audioFileWriter = nil
+            isRecording = false
+            recordingStartDate = nil
+            timer?.invalidate()
+            timer = nil
+
+            // Release the folder we claimed, so a failed start doesn't leave an
+            // empty directory that pushes the next recording to a `-2` suffix.
+            if let claimed = currentMeetingDirectory {
+                let contents = try? FileManager.default.contentsOfDirectory(atPath: claimed.path)
+                if contents?.isEmpty != false {
+                    try? FileManager.default.removeItem(at: claimed)
+                }
+            }
+            currentMeetingDirectory = nil
+
+            statusMessage = error.localizedDescription
         }
     }
 
@@ -165,6 +206,8 @@ class AppState: ObservableObject {
         // post-processing sees the meeting that was actually being stopped.
         let writerToFinalize = audioFileWriter
         audioFileWriter = nil
+        let recordingDirectory = currentMeetingDirectory
+        currentMeetingDirectory = nil
 
         let startDate = recordingStartDate ?? Date()
         recordingStartDate = nil
@@ -201,12 +244,41 @@ class AppState: ObservableObject {
         await audioCaptureManager.stopCapture()
         isRecording = false
 
-        let audioURL = writerToFinalize?.stop()
-        lastRecordingAudioURL = audioURL
+        let stopResult = writerToFinalize?.stop()
 
         isFinalizingPreviousRecording = false
 
-        guard let finalAudioURL = audioURL else { return }
+        guard let recordingDirectory else {
+            statusMessage = "Recording failed — no meeting folder was created."
+            return
+        }
+
+        // The title may have been edited while recording (that is what the
+        // recording top bar is for). Bring the folder along so the audio stays
+        // with the transcript and metadata instead of being orphaned.
+        let meetingDir = LocalStorage.reconcileMeetingDirectory(
+            recordingDirectory,
+            toTitle: capturedTitle,
+            date: startDate,
+            baseDirectory: capturedOutputDir
+        )
+
+        // The audio moved with its folder, so re-derive its path.
+        let audioURL = stopResult?.url.map {
+            meetingDir.appendingPathComponent($0.lastPathComponent)
+        }
+        lastRecordingAudioURL = audioURL
+
+        lastRecordingWarning = (stopResult?.systemAudioDropped == true)
+            ? (stopResult?.ffmpegAvailable == false
+                ? "System audio was recorded but couldn't be merged because ffmpeg isn't installed — this meeting has your microphone only. Install ffmpeg in Settings → Setup."
+                : "System audio was recorded but the merge failed — this meeting has your microphone only.")
+            : nil
+
+        guard let finalAudioURL = audioURL else {
+            statusMessage = "No audio was captured — nothing to transcribe."
+            return
+        }
 
         // === Phase 3: Detached post-processing. Transcription, markdown
         // generation, and meeting-store persistence all run in a detached
@@ -219,13 +291,13 @@ class AppState: ObservableObject {
             await previousPostTask?.value
             await self?.runPostRecordingTranscription(
                 audioURL: finalAudioURL,
+                meetingDirectory: meetingDir,
                 startDate: startDate,
                 duration: duration,
                 title: capturedTitle,
                 meetingType: capturedMeetingType,
                 notes: capturedNotes,
                 calendarEventTitle: capturedEventTitle,
-                outputDirectory: capturedOutputDir,
                 captureMode: capturedCaptureMode,
                 liveChatSession: capturedLiveChatSession
             )
@@ -238,13 +310,13 @@ class AppState: ObservableObject {
     @MainActor
     private func runPostRecordingTranscription(
         audioURL: URL,
+        meetingDirectory: URL,
         startDate: Date,
         duration: TimeInterval,
         title: String,
         meetingType: String?,
         notes: String,
         calendarEventTitle: String?,
-        outputDirectory: String,
         captureMode: AudioCaptureManager.CaptureMode,
         liveChatSession: ChatSession
     ) async {
@@ -285,12 +357,10 @@ class AppState: ObservableObject {
             segments: segments
         )
 
-        let meetingDir = LocalStorage.meetingDirectory(
-            title: title, date: startDate, baseDirectory: outputDirectory
-        )
-        lastRecordingMarkdownURL = try? LocalStorage.save(
-            markdown: markdown, title: title, date: startDate, directory: outputDirectory
-        )
+        // Write into the folder this recording already owns — never recompute
+        // it from the title, which is how audio and transcript used to diverge.
+        let meetingDir = meetingDirectory
+        lastRecordingMarkdownURL = try? LocalStorage.save(markdown: markdown, to: meetingDir)
 
         if !notes.isEmpty {
             let notesURL = meetingDir.appendingPathComponent("notes.md")
@@ -322,6 +392,9 @@ class AppState: ObservableObject {
 
     func showMeetingSummary(_ meeting: LocalMeeting) {
         currentMeeting = meeting
+        // The warning belongs to the recording that just finished, not to an
+        // older meeting the user navigated to.
+        lastRecordingWarning = nil
         lastRecordingAudioURL = meeting.hasAudio ? meeting.directoryURL?.appendingPathComponent("audio.wav") : nil
         lastRecordingMarkdownURL = meeting.hasTranscript ? meeting.directoryURL?.appendingPathComponent("transcript.md") : nil
         lastTranscriptSnippet = meeting.transcriptSnippet
@@ -370,15 +443,9 @@ class AppState: ObservableObject {
         lastRecordingAudioURL = nil
         lastRecordingMarkdownURL = nil
         lastTranscriptSnippet = nil
+        lastRecordingWarning = nil
         currentMeeting = nil
         statusMessage = nil
-    }
-
-    private func formatETA(_ seconds: Int) -> String {
-        if seconds < 60 { return "~\(seconds)s" }
-        let min = seconds / 60
-        let sec = seconds % 60
-        return sec > 0 ? "~\(min)m \(sec)s" : "~\(min)m"
     }
 
 }
