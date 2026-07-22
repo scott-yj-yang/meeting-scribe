@@ -6,7 +6,6 @@ A self-hosted, privacy-first meeting transcription and summary system for macOS.
 
 ### macOS Menu Bar App
 - **One-click recording** from the menu bar with system audio + microphone capture
-- **Live transcription preview** (first 60 seconds) to confirm audio is working
 - **Calendar integration** — auto-suggests meeting titles from your calendar events
 - **Meeting type tags** — 1:1, Subgroup, Lab Meeting, Casual, Standup
 - **Notes** — jot down notes before/during meetings, saved alongside the transcript
@@ -28,9 +27,9 @@ A self-hosted, privacy-first meeting transcription and summary system for macOS.
 │                                              │
 │   ScreenCaptureKit (system audio)            │
 │   AVAudioEngine (mic)                        │
-│   SFSpeechRecognizer (live preview)          │
-│   whisper.cpp (final transcription)          │
-│   Claude Code CLI / Ollama (summarization)   │
+│   ffmpeg (stream merging)                    │
+│   whisper.cpp (transcription)                │
+│   Claude Code / Ollama (summarization)       │
 └──────────────────────────────────────────────┘
                       │
                       ▼
@@ -43,21 +42,23 @@ A self-hosted, privacy-first meeting transcription and summary system for macOS.
 ```
 
 **Recording flow:**
-1. Click "Start Session" → captures mic + system audio to separate temp files
-2. Live transcript shows in the app (SFSpeechRecognizer, auto-disables after 60s)
-3. Click "Stop" → ffmpeg merges audio streams with alignment correction
+1. Click "Start Session" → the meeting folder is claimed and mic + system audio
+   stream to separate temp files inside it
+2. Take notes while it runs; renaming the meeting renames its folder to match
+3. Click "Stop" → ffmpeg merges the audio streams with alignment correction
 4. whisper.cpp transcribes the merged audio on-device (with progress bar + ETA)
 5. Transcript saved locally as markdown under `~/MeetingScribe/YYYY/MM-Month/DD-slug/`
 6. Click "Open in Claude Code" to summarize via `/summarize`, or run Ollama locally for an automatic summary
 
-## Upgrading from the old (main branch) install
+## Upgrading from the old web-app install
 
-If you installed MeetingScribe before via the curl one-liner from `main`,
-it set up Postgres, Next.js, and a tmux session. The native-overhaul
-release replaces all of that with a single `.app`. To migrate cleanly:
+If you installed MeetingScribe before the native rewrite, it set up Postgres,
+Next.js, and a tmux session. That version is preserved on the `legacy-main`
+branch; the current app replaces all of it with a single `.app`. To migrate
+cleanly:
 
 ```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/scott-yj-yang/meeting-scribe/feat/native-overhaul/scripts/migrate.sh)"
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/scott-yj-yang/meeting-scribe/main/scripts/migrate.sh)"
 ```
 
 This interactively removes the old web server, app bundle, CLI symlink,
@@ -94,9 +95,14 @@ Intel Macs are not supported by this build.
 ## Setup
 
 ### Requirements
-- macOS 15 (Sequoia) or newer
+- macOS 14 (Sonoma) or newer
 - whisper.cpp: `brew install whisper-cpp`
-- A whisper model, e.g. `ggml-base.en.bin` (see `scripts/download-model.sh`)
+- ffmpeg: `brew install ffmpeg` — merges your microphone with the system audio
+  from video calls. Without it, recordings capture your voice only.
+- A whisper model, e.g. `ggml-base.en.bin`
+
+The app installs whisper.cpp, a model, and ffmpeg for you — open **Settings →
+Setup** (`Cmd-,`) and use the install buttons, or run `./scripts/setup.sh`.
 
 ### Optional: summarization
 
@@ -146,10 +152,9 @@ npx tsx bin/meetingctl.ts list
 ### Permissions
 
 On first launch, macOS will ask for:
-- **Microphone** — to record your voice
-- **Screen & System Audio Recording** — to capture audio from Zoom/Meet/Teams
-- **Speech Recognition** — for live transcript preview
-- **Calendar** — to suggest meeting titles from your calendar events
+- **Microphone** — required, to record your voice
+- **Screen & System Audio Recording** — optional, to capture audio from Zoom/Meet/Teams
+- **Calendar** — optional, to suggest meeting titles from your calendar events
 
 ## Configuration
 
@@ -187,11 +192,14 @@ Meetings are organized by date:
 meeting-scribe/
   apps/
     macos/MeetingScribe/  # Swift Package — menu bar + window app
+      build-app.sh        # Build MeetingScribe.app
   cli/                    # meetingctl — Node.js CLI (list only)
   prompts/                # Summarization templates
   scripts/
+    setup.sh              # Install dependencies and build the app
     install-ollama.sh     # Install local Ollama for summarization
-    build-app.sh          # Build MeetingScribe.app
+    release.sh            # Build a signed DMG
+    migrate.sh            # Remove the old web-app install
     transcribe.sh         # Standalone transcription script
     record.sh             # Record + transcribe from terminal
 ```
@@ -203,7 +211,7 @@ meeting-scribe/
 2. (Optional) Type a meeting title or click "Use" on a calendar event
 3. (Optional) Select a meeting type tag
 4. Click "Start Session"
-5. The live transcript shows for 60 seconds to confirm audio works
+5. Take notes while it records — you can name or rename the meeting at any point
 6. When done, click "Stop" — whisper.cpp transcribes with a progress bar
 7. Review the transcript, open files in Finder, or summarize with one click
 
@@ -220,7 +228,7 @@ meeting-scribe/
 
 | Component | Technology |
 |-----------|-----------|
-| App | Swift 6, SwiftUI, MenuBarExtra, ScreenCaptureKit, AVAudioEngine, SFSpeechRecognizer |
+| App | Swift 6, SwiftUI, MenuBarExtra, ScreenCaptureKit, AVAudioEngine |
 | Transcription | whisper.cpp (on-device) |
 | Summarization | Claude Code CLI or local Ollama |
 | CLI | Node.js, Commander, TypeScript |
