@@ -17,24 +17,16 @@ let package = Package(
             exclude: ["Resources/AppIcon.appiconset"],
             resources: [.process("Resources")]
         ),
+        // Tests need a real Xcode toolchain: the Command Line Tools ship
+        // swift-testing but no runner, so `swift test` there exits 0 having
+        // executed nothing. Pointing -F at the CLT frameworks (as this target
+        // used to) made tests compile without Xcode but also shadowed Xcode's
+        // own swift-testing with an older copy, breaking the build wherever
+        // Xcode *was* present. Select Xcode with `xcode-select` instead.
         .testTarget(
             name: "MeetingScribeTests",
             dependencies: ["MeetingScribe"],
-            path: "Tests",
-            swiftSettings: [
-                .unsafeFlags([
-                    "-F", "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
-                ])
-            ],
-            linkerSettings: [
-                .unsafeFlags([
-                    "-F", "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
-                    "-Xlinker", "-rpath",
-                    "-Xlinker", "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
-                    "-Xlinker", "-rpath",
-                    "-Xlinker", "/Library/Developer/CommandLineTools/Library/Developer/usr/lib",
-                ])
-            ]
+            path: "Tests"
         ),
     ]
 )
