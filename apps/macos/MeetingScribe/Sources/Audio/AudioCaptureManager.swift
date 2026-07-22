@@ -28,6 +28,17 @@ class AudioCaptureManager: ObservableObject {
         case micAndSystem
     }
 
+    enum CaptureError: LocalizedError {
+        case microphoneUnavailable(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .microphoneUnavailable(let reason):
+                return "Couldn't start the microphone (\(reason)). Check that no other app is using it, and that Microphone access is granted in System Settings → Privacy & Security."
+            }
+        }
+    }
+
     func refreshMicList() {
         let devices = AVCaptureDevice.DiscoverySession(
             deviceTypes: [.microphone, .external],
@@ -45,7 +56,11 @@ class AudioCaptureManager: ObservableObject {
         }
     }
 
-    func startCapture() async {
+    /// Start capturing. The microphone is required — if it fails to open this
+    /// throws rather than returning quietly, so the caller never enters the
+    /// recording state believing audio is being captured when it isn't.
+    /// System audio stays best-effort.
+    func startCapture() async throws {
         // Set the selected mic as the preferred input device
         if let micID = selectedMicID {
             micCapture.preferredDeviceUID = micID
@@ -60,7 +75,7 @@ class AudioCaptureManager: ObservableObject {
             try micCapture.start()
         } catch {
             print("Mic capture failed: \(error)")
-            return
+            throw CaptureError.microphoneUnavailable(error.localizedDescription)
         }
 
         let sysHandler = onSystemAudio
