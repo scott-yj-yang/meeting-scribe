@@ -310,6 +310,21 @@ struct RecordingModeView: View {
                     .fontWeight(.semibold)
             }
 
+            if let warning = appState.lastRecordingWarning {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text(warning)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(12)
+                .frame(maxWidth: 460)
+                .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                .padding(.top, 4)
+            }
+
             Button {
                 if let meeting = appState.lastCompletedMeeting {
                     appState.showMeetingSummary(meeting)
