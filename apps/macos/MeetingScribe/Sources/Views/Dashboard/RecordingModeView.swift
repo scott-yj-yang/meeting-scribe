@@ -82,6 +82,11 @@ struct RecordingModeView: View {
                 .frame(maxWidth: 500, minHeight: 100, maxHeight: 200)
                 .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
 
+                // Audio setup — mic choice and system-audio permission, shown
+                // here so both are settled before the meeting starts rather
+                // than surfacing mid-recording.
+                audioSetupSection
+
                 // Start button
                 Button {
                     appState.toggleRecording()
@@ -97,6 +102,39 @@ struct RecordingModeView: View {
             Spacer()
         }
         .padding()
+        .onAppear { appState.refreshInputDevices() }
+        .task { await appState.refreshSystemAudioPermission() }
+    }
+
+    // MARK: - Audio setup (pre-recording)
+
+    @ViewBuilder
+    private var audioSetupSection: some View {
+        VStack(spacing: 10) {
+            MicSelector(audio: appState.audioCaptureManager)
+
+            if !appState.systemAudioGranted {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "speaker.slash.fill")
+                        .foregroundStyle(.orange)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("System audio needs permission")
+                            .font(.callout.weight(.medium))
+                        Text("Grant Screen & System Audio Recording so the other participants' voices are captured. You may need to reopen the app after granting.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Button("Grant…") { appState.openScreenRecordingSettings() }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                }
+                .padding(10)
+                .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+            }
+        }
+        .frame(maxWidth: 500)
     }
 
     // MARK: - Phase 2: Recording
@@ -327,7 +365,7 @@ struct RecordingModeView: View {
 
             Button {
                 if let meeting = appState.lastCompletedMeeting {
-                    appState.showMeetingSummary(meeting)
+                    appState.viewCompletedMeeting(meeting)
                 }
             } label: {
                 Label("View Meeting", systemImage: "arrow.right.circle.fill")
@@ -378,6 +416,35 @@ struct RecordingModeView: View {
         }
     }
 
+}
+
+// MARK: - Microphone Selector
+
+/// Microphone chooser for the pre-recording screen. Takes the capture manager
+/// as an `@ObservedObject` so the device list and selection stay live — a
+/// nested ObservableObject reached only through AppState would not publish its
+/// own changes to the view. Only shown when there's a real choice to make.
+private struct MicSelector: View {
+    @ObservedObject var audio: AudioCaptureManager
+
+    var body: some View {
+        if audio.availableMics.count > 1 {
+            HStack(spacing: 8) {
+                Image(systemName: "mic.fill")
+                    .foregroundStyle(.secondary)
+                Picker("Microphone", selection: Binding(
+                    get: { audio.selectedMicID },
+                    set: { audio.selectedMicID = $0 }
+                )) {
+                    ForEach(audio.availableMics) { mic in
+                        Text(mic.name).tag(Optional(mic.id))
+                    }
+                }
+                .labelsHidden()
+                .help("Choose which microphone records your voice")
+            }
+        }
+    }
 }
 
 // MARK: - Calendar Picker Section
