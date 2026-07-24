@@ -41,13 +41,20 @@ struct RecordingModeView: View {
     // MARK: - Phase 1: Pre-recording
 
     private var preRecordingPhase: some View {
-        VStack(spacing: 0) {
-            Spacer()
+        // Scrollable so no control is ever clipped when the window is short or
+        // an unusual aspect ratio — previously the Start button could sit below
+        // the bottom edge with no way to reach it. The minHeight keeps the
+        // content vertically centered when there's room, and lets it scroll
+        // when there isn't.
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(spacing: 0) {
+                    Spacer(minLength: 24)
 
-            VStack(spacing: 24) {
-                // Calendar event picker
-                CalendarPickerSection()
-                    .padding(.horizontal, 24)
+                    VStack(spacing: 24) {
+                        // Calendar event picker
+                        CalendarPickerSection()
+                            .padding(.horizontal, 24)
 
                 // Meeting type pills
                 meetingTypePills
@@ -96,12 +103,16 @@ struct RecordingModeView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(.blue)
                 .controlSize(.large)
-            }
-            .frame(maxWidth: 500)
+                    }
+                    .frame(maxWidth: 500)
 
-            Spacer()
+                    Spacer(minLength: 24)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: proxy.size.height)
+                .padding()
+            }
         }
-        .padding()
         .onAppear { appState.refreshInputDevices() }
         .task { await appState.refreshSystemAudioPermission() }
     }
