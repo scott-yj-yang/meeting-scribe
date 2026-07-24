@@ -5,6 +5,10 @@ struct SetupView: View {
     @State private var ollamaServerRunning = false
     @State private var ffmpegInstalled = false
 
+    @AppStorage("meetingAlertsEnabled") private var meetingAlertsEnabled = true
+    @AppStorage("zoomDetectionEnabled") private var zoomDetectionEnabled = true
+    @AppStorage("meetingAlertLeadMinutes") private var leadMinutes = 2
+
     @State private var installingOllama = false
     @State private var startingOllamaServer = false
     @State private var installingFFmpeg = false
@@ -35,6 +39,17 @@ struct SetupView: View {
                     refreshStatus()
                     installingFFmpeg = false
                 }
+            }
+
+            Section("Meeting Alerts") {
+                Toggle("Show a prompt before calendar meetings and during Zoom calls",
+                       isOn: $meetingAlertsEnabled)
+                Stepper("Remind me \(leadMinutes) min before",
+                        value: $leadMinutes, in: 1...10)
+                    .disabled(!meetingAlertsEnabled)
+                Toggle("Detect active Zoom meetings",
+                       isOn: $zoomDetectionEnabled)
+                    .disabled(!meetingAlertsEnabled)
             }
 
             Section("Summarization") {

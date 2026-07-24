@@ -4,6 +4,7 @@ import SwiftUI
 struct MeetingScribeApp: App {
     @StateObject private var appState = AppState()
     @Environment(\.openWindow) private var openWindow
+    @State private var promptController: FloatingPromptController?
 
     var body: some Scene {
         // Main dashboard window
@@ -18,6 +19,20 @@ struct MeetingScribeApp: App {
         MenuBarExtra {
             MenuBarView()
                 .environmentObject(appState)
+                .task {
+                    // The MenuBarExtra scene is always alive, so it's the right
+                    // place to keep the floating-prompt controller and to react
+                    // to a prompt-initiated recording by surfacing the window.
+                    if promptController == nil {
+                        promptController = FloatingPromptController(
+                            monitor: appState.meetingMonitor, appState: appState
+                        )
+                    }
+                }
+                .onChange(of: appState.recordingSurfaceRequest) { _, _ in
+                    openWindow(id: "dashboard")
+                    NSApp.activate(ignoringOtherApps: true)
+                }
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: appState.isRecording ? "waveform.circle.fill" : "doc.text.magnifyingglass")

@@ -59,6 +59,11 @@ struct NativeDashboard: View {
             selectedMeeting = meeting
             appState.meetingToOpen = nil
         }
+        .onChange(of: appState.recordingSurfaceRequest) { _, _ in
+            // A recording was started from the floating meeting prompt — show
+            // the recording view so the user lands on it.
+            showRecordingMode = true
+        }
         .alert(
             "Delete this meeting?",
             isPresented: Binding(
