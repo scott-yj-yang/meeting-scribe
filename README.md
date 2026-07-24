@@ -142,6 +142,17 @@ open .build/arm64-apple-macosx/debug/MeetingScribe.app
 
 Press `Cmd-,` in the app to open Settings and pick your summarization provider.
 
+### Running the tests
+
+```bash
+./scripts/test.sh
+```
+
+Builds and runs the full Swift test suite, exactly as CI does. It uses an
+installed Xcode for that one run (via `DEVELOPER_DIR`) without changing your
+global `xcode-select`, because the Command Line Tools ship swift-testing but no
+runner — `swift test` under CLT alone exits 0 having executed nothing.
+
 ### CLI (optional)
 ```bash
 cd cli
