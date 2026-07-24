@@ -58,6 +58,13 @@ class AppState: ObservableObject {
     // + writer.stop). Prevents a new recording from racing the writer reference.
     @Published var isFinalizingPreviousRecording: Bool = false
 
+    // Synchronous re-entrancy guard for the stop path, set the instant a stop is
+    // requested — before any `await`. Rapid taps on the stop button used to
+    // launch overlapping teardown tasks that raced the live audio thread against
+    // shared capture state, corrupting memory (a crash on the next SwiftUI
+    // render). Not @Published: it gates logic, it isn't observed by the UI.
+    private var isStopping = false
+
     private var timer: Timer?
     private var recordingStartDate: Date?
     let audioCaptureManager = AudioCaptureManager()
@@ -86,7 +93,7 @@ class AppState: ObservableObject {
         if isRecording {
             stopRecording()
         } else {
-            guard !isFinalizingPreviousRecording else {
+            guard !isStopping, !isFinalizingPreviousRecording else {
                 statusMessage = "Finalizing previous recording — try again in a moment..."
                 return
             }
@@ -236,12 +243,22 @@ class AppState: ObservableObject {
     }
 
     func stopRecording() {
+        // Ignore repeat stop requests once a stop is already underway. Without
+        // this, double/rapid taps spawned overlapping doStopRecording tasks that
+        // tore down the same capture concurrently.
+        guard isRecording, !isStopping else { return }
+        isStopping = true
         Task.detached { [weak self] in
             await self?.doStopRecording()
         }
     }
 
     private func doStopRecording() async {
+        // Release the stop guard once the synchronous teardown returns (capture
+        // stopped, writer finalized). Post-processing continues independently in
+        // its own task, so it's safe to allow a new recording from here on.
+        defer { isStopping = false }
+
         // === Phase 1: Snapshot all per-recording state BEFORE any `await`.
         // This is the race-prevention trick: once we yield, a rapid
         // doStartRecording may overwrite self.audioFileWriter, meetingTitle,

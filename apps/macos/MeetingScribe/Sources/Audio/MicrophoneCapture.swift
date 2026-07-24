@@ -8,6 +8,11 @@ final class MicrophoneCapture: @unchecked Sendable {
     var preferredDeviceUID: String?
 
     func start() throws {
+        // Installing a second tap on a bus that already has one traps
+        // ("nullptr == Tap()"). Refuse a redundant start, and clear any stale
+        // tap defensively before installing, so a rapid stop/start can't crash.
+        guard !isCapturing else { return }
+
         if let uid = preferredDeviceUID {
             setInputDevice(uid: uid)
         }
@@ -16,6 +21,7 @@ final class MicrophoneCapture: @unchecked Sendable {
         let format = inputNode.outputFormat(forBus: 0)
 
         let handler = onAudioBuffer
+        inputNode.removeTap(onBus: 0)
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, time in
             handler?(buffer, time)
         }

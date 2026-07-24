@@ -10,6 +10,12 @@ final class AudioFileWriter: @unchecked Sendable {
     private var outputFormat: AVAudioFormat?
     private var sysConverter: AVAudioConverter?
 
+    // Serializes the audio-thread writes against stop() closing the files.
+    // AVAudioFile is not thread-safe: writing on the capture thread while stop()
+    // releases the file on the main thread is a use-after-free that corrupts the
+    // heap. This lock makes writes and the close mutually exclusive.
+    private let fileLock = NSLock()
+
     let fileURL: URL          // final merged output
     private let micURL: URL   // temp mic-only file
     private let sysURL: URL   // temp system-only file
@@ -47,12 +53,16 @@ final class AudioFileWriter: @unchecked Sendable {
 
     /// Write mic buffer — direct, same format
     func write(buffer: AVAudioPCMBuffer) {
+        fileLock.lock()
+        defer { fileLock.unlock() }
         if micStartTime == nil { micStartTime = Date() }
         try? micFile?.write(from: buffer)
     }
 
     /// Write system audio buffer — convert format if needed
     func writeSystemAudio(sampleBuffer: CMSampleBuffer) {
+        fileLock.lock()
+        defer { fileLock.unlock() }
         if sysStartTime == nil { sysStartTime = Date() }
         guard let pcmBuffer = convertToPCMBuffer(sampleBuffer) else { return }
         guard let outFmt = outputFormat else { return }
@@ -69,9 +79,13 @@ final class AudioFileWriter: @unchecked Sendable {
 
     /// Stop recording and merge the two files
     func stop() -> StopResult {
+        // Close the files under the same lock the write path uses, so a buffer
+        // in flight on the audio thread can't write to a file being released.
+        fileLock.lock()
         micFile = nil
         sysFile = nil
         sysConverter = nil
+        fileLock.unlock()
 
         // Merge mic + system audio using ffmpeg
         let merge = mergeFiles()
