@@ -2,7 +2,16 @@ import Testing
 import AppKit
 @testable import MeetingScribe
 
+// These suites are @MainActor because they exercise AppKit (NSFont, NSColor,
+// NSMutableAttributedString), whose process-global font/color caches are not
+// thread-safe. swift-testing runs tests in parallel across threads by default,
+// which corrupted those caches and made assertions flap (e.g. a "### " heading
+// intermittently reporting 12pt instead of 15pt). Pinning to the main actor
+// serializes the AppKit work and mirrors production, where MarkdownStyler only
+// ever runs from NSTextView callbacks on the main thread.
+
 @Suite("MarkdownStyler — headings")
+@MainActor
 struct MarkdownStylerHeadingTests {
 
     @Test("# heading produces 22pt bold attribute on the line")
@@ -62,6 +71,7 @@ struct MarkdownStylerHeadingTests {
 }
 
 @Suite("MarkdownStyler — inline")
+@MainActor
 struct MarkdownStylerInlineTests {
 
     @Test("**bold** applies bold to the inner text")
@@ -112,6 +122,7 @@ struct MarkdownStylerInlineTests {
 }
 
 @Suite("MarkdownStyler — line-start patterns")
+@MainActor
 struct MarkdownStylerLineStartTests {
 
     @Test("- bullet line gets head indent")
@@ -153,6 +164,7 @@ struct MarkdownStylerLineStartTests {
 }
 
 @Suite("MarkdownStyler — callouts")
+@MainActor
 struct MarkdownStylerCalloutTests {
 
     @Test("> [!action] line gets red chip background on the marker")
