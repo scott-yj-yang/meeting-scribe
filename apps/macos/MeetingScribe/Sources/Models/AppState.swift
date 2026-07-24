@@ -44,6 +44,11 @@ class AppState: ObservableObject {
 
     let calendarManager = CalendarManager()
     let meetingStore: MeetingStore
+    let meetingMonitor: MeetingMonitor
+
+    /// Bumped to ask the dashboard to come forward and enter recording mode
+    /// (used when a recording is started from the floating meeting prompt).
+    @Published var recordingSurfaceRequest = 0
 
     @AppStorage("outputDirectory") var outputDirectory = "~/MeetingScribe"
     @AppStorage("saveAudio") var saveAudio = true
@@ -83,10 +88,29 @@ class AppState: ObservableObject {
 
     init() {
         meetingStore = MeetingStore(baseDirectory: "~/MeetingScribe")
+        meetingMonitor = MeetingMonitor(calendar: calendarManager)
+        meetingMonitor.appState = self
+        meetingMonitor.start()
     }
 
     var recentRecordings: [LocalMeeting] {
         meetingStore.meetings
+    }
+
+    /// Start a recording from a floating meeting prompt: pre-fill the title,
+    /// link the calendar event when there is one, bring the dashboard forward,
+    /// and begin. No-op if a recording is already running.
+    func beginRecording(from prompt: MeetingPrompt) {
+        meetingMonitor.markHandled(prompt)
+        guard !isRecording, !isStopping, !isFinalizingPreviousRecording else { return }
+
+        meetingTitle = prompt.kind == .zoomMeeting ? "" : prompt.title
+        if let id = prompt.calendarEventID {
+            let events = [calendarManager.currentEvent].compactMap { $0 } + calendarManager.upcomingEvents
+            selectedCalendarEvent = events.first { $0.id == id }
+        }
+        recordingSurfaceRequest &+= 1   // ask the dashboard to show recording mode
+        toggleRecording()
     }
 
     func toggleRecording() {
