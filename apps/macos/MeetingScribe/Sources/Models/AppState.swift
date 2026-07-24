@@ -1,6 +1,8 @@
 import Foundation
 import SwiftUI
 import AVFoundation
+import ScreenCaptureKit
+import AppKit
 
 @MainActor
 class AppState: ObservableObject {
@@ -27,6 +29,18 @@ class AppState: ObservableObject {
     /// system audio had to be dropped. Shown in the post-recording panel so a
     /// mic-only recording is never mistaken for a complete one.
     @Published var lastRecordingWarning: String? = nil
+
+    /// Set to request the dashboard open a specific meeting's detail view. The
+    /// dashboard observes this, navigates, then clears it. Needed because the
+    /// selected meeting lives in the dashboard's local view state, which the
+    /// post-recording "View Meeting" button cannot reach directly.
+    @Published var meetingToOpen: LocalMeeting? = nil
+
+    /// Whether screen-recording permission (required to capture system audio) is
+    /// granted. Probed before recording so the user is prompted up front, not
+    /// mid-meeting. `true` until proven otherwise so the UI doesn't flash a
+    /// warning before the first probe completes.
+    @Published var systemAudioGranted: Bool = true
 
     let calendarManager = CalendarManager()
     let meetingStore: MeetingStore
@@ -87,6 +101,35 @@ class AppState: ObservableObject {
 
     func openLiveChatPanel() {
         showLiveChatPanel = true
+    }
+
+    // MARK: - Pre-recording setup
+
+    /// Populate the microphone list so the pre-recording screen can offer a
+    /// picker. Safe to call repeatedly.
+    func refreshInputDevices() {
+        audioCaptureManager.refreshMicList()
+    }
+
+    /// Probe screen-recording permission, which system-audio capture requires.
+    ///
+    /// The first call to `SCShareableContent.current` is what triggers macOS's
+    /// permission prompt, so calling this from the pre-recording screen moves
+    /// that prompt to *before* the meeting starts instead of surfacing it
+    /// mid-recording. Runs off the main actor to match how capture itself
+    /// touches ScreenCaptureKit.
+    func refreshSystemAudioPermission() async {
+        let granted = await Task.detached { () -> Bool in
+            ((try? await SCShareableContent.current) != nil)
+        }.value
+        systemAudioGranted = granted
+    }
+
+    /// Deep-link to System Settings so the user can grant screen recording.
+    func openScreenRecordingSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     func closeLiveChatPanel() {
@@ -389,6 +432,20 @@ class AppState: ObservableObject {
     }
 
     // MARK: - Post-recording actions
+
+    /// Dismiss the post-recording view and ask the dashboard to open this
+    /// meeting's detail page. This is what "View Meeting" invokes: on its own,
+    /// leaving `showPostRecording` true kept the recording view on screen and
+    /// the button appeared to do nothing.
+    func viewCompletedMeeting(_ meeting: LocalMeeting) {
+        showPostRecording = false
+        lastRecordingWarning = nil
+        lastRecordingAudioURL = nil
+        lastRecordingMarkdownURL = nil
+        lastTranscriptSnippet = nil
+        statusMessage = nil
+        meetingToOpen = meeting
+    }
 
     func showMeetingSummary(_ meeting: LocalMeeting) {
         currentMeeting = meeting

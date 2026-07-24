@@ -48,10 +48,14 @@ struct NativeDashboard: View {
             appState.meetingStore.loadAll()
             Task { await appState.calendarManager.fetchCurrentAndUpcoming() }
         }
-        .onChange(of: appState.lastCompletedMeeting) { _, newMeeting in
-            // No automatic navigation — the user chooses when to view the
-            // meeting via the explicit "View Meeting" button in completedView.
-            _ = newMeeting
+        .onChange(of: appState.meetingToOpen) { _, meeting in
+            // "View Meeting" (and anything else that wants to surface a meeting)
+            // sets appState.meetingToOpen. Leave recording mode, select it in
+            // the sidebar so the detail pane shows it, then clear the request.
+            guard let meeting else { return }
+            showRecordingMode = false
+            selectedMeeting = meeting
+            appState.meetingToOpen = nil
         }
     }
 
