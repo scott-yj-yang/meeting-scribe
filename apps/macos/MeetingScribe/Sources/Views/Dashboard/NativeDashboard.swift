@@ -6,6 +6,8 @@ struct NativeDashboard: View {
     @State private var searchText = ""
     @State private var selectedType: String?
     @State private var showRecordingMode = false
+    /// Meeting the user asked to delete from the sidebar, awaiting confirmation.
+    @State private var meetingPendingDeletion: LocalMeeting?
 
     var isRecordingMode: Bool {
         // Note: we intentionally do NOT include `appState.isRecording` here.
@@ -48,10 +50,38 @@ struct NativeDashboard: View {
             appState.meetingStore.loadAll()
             Task { await appState.calendarManager.fetchCurrentAndUpcoming() }
         }
-        .onChange(of: appState.lastCompletedMeeting) { _, newMeeting in
-            // No automatic navigation — the user chooses when to view the
-            // meeting via the explicit "View Meeting" button in completedView.
-            _ = newMeeting
+        .onChange(of: appState.meetingToOpen) { _, meeting in
+            // "View Meeting" (and anything else that wants to surface a meeting)
+            // sets appState.meetingToOpen. Leave recording mode, select it in
+            // the sidebar so the detail pane shows it, then clear the request.
+            guard let meeting else { return }
+            showRecordingMode = false
+            selectedMeeting = meeting
+            appState.meetingToOpen = nil
+        }
+        .onChange(of: appState.recordingSurfaceRequest) { _, _ in
+            // A recording was started from the floating meeting prompt — show
+            // the recording view so the user lands on it.
+            showRecordingMode = true
+        }
+        .alert(
+            "Delete this meeting?",
+            isPresented: Binding(
+                get: { meetingPendingDeletion != nil },
+                set: { if !$0 { meetingPendingDeletion = nil } }
+            ),
+            presenting: meetingPendingDeletion
+        ) { meeting in
+            Button("Cancel", role: .cancel) { meetingPendingDeletion = nil }
+            Button("Delete", role: .destructive) {
+                appState.meetingStore.delete(meeting)
+                if selectedMeeting?.id == meeting.id {
+                    selectedMeeting = nil
+                }
+                meetingPendingDeletion = nil
+            }
+        } message: { meeting in
+            Text("This will permanently remove \"\(meeting.title)\" and all its files (audio, transcript, summary, notes).")
         }
     }
 
@@ -68,10 +98,9 @@ struct NativeDashboard: View {
                         searchText: searchText,
                         selectedType: selectedType,
                         onDelete: { meeting in
-                            appState.meetingStore.delete(meeting)
-                            if selectedMeeting?.id == meeting.id {
-                                selectedMeeting = nil
-                            }
+                            // Confirm before deleting — deletion removes the
+                            // meeting's files irreversibly.
+                            meetingPendingDeletion = meeting
                         }
                     )
                 }

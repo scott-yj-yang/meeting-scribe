@@ -12,6 +12,11 @@ import Foundation
 ///    Directory watches survive that and fire on the rename event.
 @MainActor
 final class SummaryFileWatcher {
+    // `nonisolated(unsafe)` is required so `deinit` (which is nonisolated) can
+    // touch these. Swift 6.0 — the toolchain CI and releases build with — does
+    // not treat DispatchSourceFileSystemObject as Sendable. Newer toolchains do
+    // and will flag the attribute as unnecessary; leave it regardless, or the
+    // release build fails. See commit 8a6f7be.
     nonisolated(unsafe) private let source: DispatchSourceFileSystemObject
     private let fd: Int32
     nonisolated(unsafe) private var debounceTask: Task<Void, Never>?

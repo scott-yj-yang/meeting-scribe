@@ -18,6 +18,7 @@ class CalendarManager: ObservableObject {
         let attendees: [String]
         let startDate: Date
         let endDate: Date
+        let conferenceLink: ConferenceLink?
 
         var isHappeningNow: Bool {
             let now = Date()
@@ -80,7 +81,10 @@ class CalendarManager: ObservableObject {
                 organizer: event.organizer?.name,
                 attendees: event.attendees?.compactMap { $0.name } ?? [],
                 startDate: event.startDate,
-                endDate: event.endDate
+                endDate: event.endDate,
+                conferenceLink: ConferenceLinkExtractor.extract(
+                    url: event.url, location: event.location, notes: event.notes
+                )
             )
         }
 

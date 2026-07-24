@@ -88,6 +88,12 @@ struct StopRecordingButton: View {
         case .confirming:
             revertTask?.cancel()
             revertTask = nil
+            // Disarm before firing so a stray extra tap lands on `.idle`
+            // (harmlessly re-arming) instead of confirming a second stop.
+            // AppState also guards re-entrant stops, but this keeps the button
+            // itself from initiating them.
+            phase = .idle
+            confirmProgress = 1.0
             appState.toggleRecording()
         }
     }

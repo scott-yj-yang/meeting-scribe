@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 16 (Swift 6 toolchain)
+        run: sudo xcode-select -s /Applications/Xcode_16.app
+
+      - name: Build
+        working-directory: apps/macos/MeetingScribe
+        run: swift build
+
+      - name: Test
+        working-directory: apps/macos/MeetingScribe
+        run: swift test

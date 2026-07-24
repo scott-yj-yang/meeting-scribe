@@ -2,11 +2,16 @@ import Testing
 import Foundation
 @testable import MeetingScribe
 
-@Suite("OllamaProvider")
+/// `.serialized` because these tests share one global stub —
+/// `MockURLProtocol.requestHandler`. swift-testing runs tests in parallel by
+/// default, so without it the two tests overwrite each other's handler and each
+/// receives the other's canned response.
+@Suite("OllamaProvider", .serialized)
 struct OllamaProviderTests {
 
     @Test("listModels parses tags response")
     func testListModelsParsesTagsResponse() async throws {
+        defer { MockURLProtocol.requestHandler = nil }
         MockURLProtocol.requestHandler = { request in
             #expect(request.url?.path == "/api/tags")
             let json = """
@@ -20,11 +25,11 @@ struct OllamaProviderTests {
         let models = try await provider.listModels()
         #expect(models.count == 2)
         #expect(models[0].name == "llama3.2:latest")
-        MockURLProtocol.requestHandler = nil
     }
 
     @Test("summarize streams NDJSON deltas")
     func testSummarizeStreamsNDJSONDeltas() async throws {
+        defer { MockURLProtocol.requestHandler = nil }
         MockURLProtocol.requestHandler = { request in
             #expect(request.url?.path == "/v1/chat/completions")
             #expect(request.httpMethod == "POST")
@@ -44,14 +49,33 @@ struct OllamaProviderTests {
             return (response, body)
         }
 
-        let provider = OllamaProvider(endpoint: "http://localhost:11434", model: "llama3.2", urlSession: mockSession())
+        // Inject a template directory so the test does not depend on where the
+        // repo happens to be checked out.
+        let templateDir = try makeTemplateDirectory()
+        defer { try? FileManager.default.removeItem(atPath: templateDir) }
+
+        let provider = OllamaProvider(
+            endpoint: "http://localhost:11434",
+            model: "llama3.2",
+            urlSession: mockSession(),
+            templateDirectories: [templateDir]
+        )
         var collected = ""
         let result = try await provider.summarize(transcript: "Test transcript", template: "default") { delta in
             collected += delta
         }
         #expect(collected == "Hello world!")
         #expect(result == "Hello world!")
-        MockURLProtocol.requestHandler = nil
+    }
+
+    /// A throwaway directory holding a `default.md` prompt template.
+    private func makeTemplateDirectory() throws -> String {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OllamaProviderTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try "Summarize this transcript."
+            .write(to: dir.appendingPathComponent("default.md"), atomically: true, encoding: .utf8)
+        return dir.path
     }
 
     private func mockSession() -> URLSession {

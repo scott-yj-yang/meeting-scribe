@@ -13,7 +13,34 @@ final class OllamaProvider: LLMProvider {
 
     var displayName: String { "Ollama (\(model))" }
 
-    init(endpoint: String, model: String, urlSession: URLSession = .shared) {
+    /// Where summarization prompt templates are looked up, in order.
+    ///
+    /// The app bundle comes first so an installed build works, then the user's
+    /// own editable copy, then a source checkout for dev builds. Previously
+    /// only the last of these was consulted, which meant summarization failed
+    /// with "No prompt template found" on every machine that wasn't the
+    /// author's.
+    static var defaultTemplateDirectories: [String] {
+        let home = NSHomeDirectory()
+        var dirs: [String] = []
+        if let bundled = Bundle.main.resourceURL?.appendingPathComponent("prompts/templates").path {
+            dirs.append(bundled)
+        }
+        dirs.append("\(home)/MeetingScribe/prompts/templates")
+        dirs.append("\(home)/Developer/meeting-scribe/prompts/templates")
+        dirs.append("\(home)/Developer/meeting-scribe/prompts")
+        return dirs
+    }
+
+    private let templateDirectories: [String]
+
+    init(
+        endpoint: String,
+        model: String,
+        urlSession: URLSession = .shared,
+        templateDirectories: [String] = OllamaProvider.defaultTemplateDirectories
+    ) {
+        self.templateDirectories = templateDirectories
         // Defense in depth: trim any stray whitespace or newline that might
         // have landed in the endpoint via copy/paste. A trailing \n makes
         // URL(string:) succeed (Foundation is lenient) but CFNetwork then
@@ -148,12 +175,7 @@ final class OllamaProvider: LLMProvider {
     }
 
     private func loadTemplate(_ name: String) throws -> String {
-        let homeDir = NSHomeDirectory()
-        let templateDirs = [
-            "\(homeDir)/Developer/meeting-scribe/prompts/templates",
-            "\(homeDir)/Developer/meeting-scribe/prompts",
-        ]
-        for dir in templateDirs {
+        for dir in templateDirectories {
             for candidate in [name, "summarize"] {
                 let path = "\(dir)/\(candidate).md"
                 if let c = try? String(contentsOfFile: path, encoding: .utf8), !c.isEmpty {

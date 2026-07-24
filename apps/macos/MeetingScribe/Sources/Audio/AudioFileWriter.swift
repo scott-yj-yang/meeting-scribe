@@ -10,6 +10,12 @@ final class AudioFileWriter: @unchecked Sendable {
     private var outputFormat: AVAudioFormat?
     private var sysConverter: AVAudioConverter?
 
+    // Serializes the audio-thread writes against stop() closing the files.
+    // AVAudioFile is not thread-safe: writing on the capture thread while stop()
+    // releases the file on the main thread is a use-after-free that corrupts the
+    // heap. This lock makes writes and the close mutually exclusive.
+    private let fileLock = NSLock()
+
     let fileURL: URL          // final merged output
     private let micURL: URL   // temp mic-only file
     private let sysURL: URL   // temp system-only file
@@ -17,8 +23,21 @@ final class AudioFileWriter: @unchecked Sendable {
     private var micStartTime: Date?
     private var sysStartTime: Date?
 
-    init(directory: String, title: String, date: Date) {
-        meetingDir = LocalStorage.meetingDirectory(title: title, date: date, baseDirectory: directory)
+    /// Outcome of finalizing a recording.
+    struct StopResult: Sendable {
+        /// The merged audio file, or `nil` when no audio was captured at all.
+        let url: URL?
+        /// System audio was captured but could not be merged, so the saved file
+        /// holds only the microphone — the other participants are missing.
+        let systemAudioDropped: Bool
+        /// Whether an ffmpeg binary was found at all.
+        let ffmpegAvailable: Bool
+    }
+
+    /// The meeting folder is resolved by the caller and passed in, so the audio
+    /// and the transcript can never disagree about where the meeting lives.
+    init(directory: URL) {
+        meetingDir = directory
         try? FileManager.default.createDirectory(at: meetingDir, withIntermediateDirectories: true)
         fileURL = meetingDir.appendingPathComponent("audio.wav")
         micURL = meetingDir.appendingPathComponent(".mic_temp.wav")
@@ -34,12 +53,16 @@ final class AudioFileWriter: @unchecked Sendable {
 
     /// Write mic buffer — direct, same format
     func write(buffer: AVAudioPCMBuffer) {
+        fileLock.lock()
+        defer { fileLock.unlock() }
         if micStartTime == nil { micStartTime = Date() }
         try? micFile?.write(from: buffer)
     }
 
     /// Write system audio buffer — convert format if needed
     func writeSystemAudio(sampleBuffer: CMSampleBuffer) {
+        fileLock.lock()
+        defer { fileLock.unlock() }
         if sysStartTime == nil { sysStartTime = Date() }
         guard let pcmBuffer = convertToPCMBuffer(sampleBuffer) else { return }
         guard let outFmt = outputFormat else { return }
@@ -55,25 +78,52 @@ final class AudioFileWriter: @unchecked Sendable {
     }
 
     /// Stop recording and merge the two files
-    func stop() -> URL {
+    func stop() -> StopResult {
+        // Close the files under the same lock the write path uses, so a buffer
+        // in flight on the audio thread can't write to a file being released.
+        fileLock.lock()
         micFile = nil
         sysFile = nil
         sysConverter = nil
+        fileLock.unlock()
 
         // Merge mic + system audio using ffmpeg
-        mergeFiles()
+        let merge = mergeFiles()
 
-        return fileURL
+        // Only report a URL when a file actually landed — otherwise callers
+        // would hand a nonexistent path to whisper and surface it as a
+        // transcription failure rather than "nothing was recorded".
+        let produced = FileManager.default.fileExists(atPath: fileURL.path) ? fileURL : nil
+
+        return StopResult(
+            url: produced,
+            systemAudioDropped: merge.systemAudioDropped,
+            ffmpegAvailable: merge.ffmpegAvailable
+        )
     }
 
     // MARK: - Private
 
-    private func mergeFiles() {
+    private struct MergeOutcome {
+        var systemAudioDropped = false
+        var ffmpegAvailable = true
+    }
+
+    @discardableResult
+    private func mergeFiles() -> MergeOutcome {
+        var outcome = MergeOutcome()
         let fm = FileManager.default
         let micExists = fm.fileExists(atPath: micURL.path)
         let sysExists = fm.fileExists(atPath: sysURL.path)
 
         if micExists && sysExists {
+            guard let ffmpeg = FFmpegLocator.resolve() else {
+                print("[AudioWriter] ffmpeg not found, using mic-only — system audio dropped")
+                try? fm.moveItem(at: micURL, to: fileURL)
+                try? fm.removeItem(at: micURL)
+                try? fm.removeItem(at: sysURL)
+                return MergeOutcome(systemAudioDropped: true, ffmpegAvailable: false)
+            }
             // Calculate timing offset between mic and system audio start
             var sysDelay: Double = 0
             if let micStart = micStartTime, let sysStart = sysStartTime {
@@ -83,7 +133,7 @@ final class AudioFileWriter: @unchecked Sendable {
 
             // Merge with offset correction and echo reduction
             let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/ffmpeg")
+            process.executableURL = ffmpeg
 
             // Build filter: delay the later stream to align, then mix
             let delayMs = Int(abs(sysDelay) * 1000)
@@ -120,13 +170,15 @@ final class AudioFileWriter: @unchecked Sendable {
                     print("[AudioWriter] Merged mic + system audio")
                 } else {
                     // ffmpeg failed — fall back to mic-only
-                    print("[AudioWriter] Merge failed, using mic-only")
+                    print("[AudioWriter] Merge failed, using mic-only — system audio dropped")
                     try? fm.moveItem(at: micURL, to: fileURL)
+                    outcome.systemAudioDropped = true
                 }
             } catch {
-                // ffmpeg not found — fall back to mic-only
-                print("[AudioWriter] ffmpeg not available, using mic-only")
+                // ffmpeg could not be launched — fall back to mic-only
+                print("[AudioWriter] ffmpeg failed to launch, using mic-only — system audio dropped")
                 try? fm.moveItem(at: micURL, to: fileURL)
+                outcome.systemAudioDropped = true
             }
         } else if micExists {
             try? fm.moveItem(at: micURL, to: fileURL)
@@ -137,6 +189,8 @@ final class AudioFileWriter: @unchecked Sendable {
         // Clean up temp files
         try? fm.removeItem(at: micURL)
         try? fm.removeItem(at: sysURL)
+
+        return outcome
     }
 
     private func convertToPCMBuffer(_ sampleBuffer: CMSampleBuffer) -> AVAudioPCMBuffer? {

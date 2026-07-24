@@ -1,6 +1,8 @@
 import Foundation
 import SwiftUI
 import AVFoundation
+import ScreenCaptureKit
+import AppKit
 
 @MainActor
 class AppState: ObservableObject {
@@ -23,8 +25,30 @@ class AppState: ObservableObject {
     @Published var currentMeeting: LocalMeeting? = nil
     @Published var lastCompletedMeeting: LocalMeeting? = nil
 
+    /// Non-fatal problem with the recording that just finished — currently, that
+    /// system audio had to be dropped. Shown in the post-recording panel so a
+    /// mic-only recording is never mistaken for a complete one.
+    @Published var lastRecordingWarning: String? = nil
+
+    /// Set to request the dashboard open a specific meeting's detail view. The
+    /// dashboard observes this, navigates, then clears it. Needed because the
+    /// selected meeting lives in the dashboard's local view state, which the
+    /// post-recording "View Meeting" button cannot reach directly.
+    @Published var meetingToOpen: LocalMeeting? = nil
+
+    /// Whether screen-recording permission (required to capture system audio) is
+    /// granted. Probed before recording so the user is prompted up front, not
+    /// mid-meeting. `true` until proven otherwise so the UI doesn't flash a
+    /// warning before the first probe completes.
+    @Published var systemAudioGranted: Bool = true
+
     let calendarManager = CalendarManager()
     let meetingStore: MeetingStore
+    let meetingMonitor: MeetingMonitor
+
+    /// Bumped to ask the dashboard to come forward and enter recording mode
+    /// (used when a recording is started from the floating meeting prompt).
+    @Published var recordingSurfaceRequest = 0
 
     @AppStorage("outputDirectory") var outputDirectory = "~/MeetingScribe"
     @AppStorage("saveAudio") var saveAudio = true
@@ -39,11 +63,23 @@ class AppState: ObservableObject {
     // + writer.stop). Prevents a new recording from racing the writer reference.
     @Published var isFinalizingPreviousRecording: Bool = false
 
+    // Synchronous re-entrancy guard for the stop path, set the instant a stop is
+    // requested — before any `await`. Rapid taps on the stop button used to
+    // launch overlapping teardown tasks that raced the live audio thread against
+    // shared capture state, corrupting memory (a crash on the next SwiftUI
+    // render). Not @Published: it gates logic, it isn't observed by the UI.
+    private var isStopping = false
+
     private var timer: Timer?
     private var recordingStartDate: Date?
     let audioCaptureManager = AudioCaptureManager()
     private var audioFileWriter: AudioFileWriter?
     private let whisperProcessor = WhisperPostProcessor()
+
+    /// The folder claimed when the current recording started. Resolved exactly
+    /// once so audio, transcript, notes, and metadata can never end up in
+    /// different directories when the title is edited mid-recording.
+    private var currentMeetingDirectory: URL?
 
     // Serializes post-processing (whisper transcription + markdown + save) so
     // rapid back-to-back recordings don't run two whisper passes concurrently
@@ -52,17 +88,36 @@ class AppState: ObservableObject {
 
     init() {
         meetingStore = MeetingStore(baseDirectory: "~/MeetingScribe")
+        meetingMonitor = MeetingMonitor(calendar: calendarManager)
+        meetingMonitor.appState = self
+        meetingMonitor.start()
     }
 
     var recentRecordings: [LocalMeeting] {
         meetingStore.meetings
     }
 
+    /// Start a recording from a floating meeting prompt: pre-fill the title,
+    /// link the calendar event when there is one, bring the dashboard forward,
+    /// and begin. No-op if a recording is already running.
+    func beginRecording(from prompt: MeetingPrompt) {
+        meetingMonitor.markHandled(prompt)
+        guard !isRecording, !isStopping, !isFinalizingPreviousRecording else { return }
+
+        meetingTitle = prompt.kind == .zoomMeeting ? "" : prompt.title
+        if let id = prompt.calendarEventID {
+            let events = [calendarManager.currentEvent].compactMap { $0 } + calendarManager.upcomingEvents
+            selectedCalendarEvent = events.first { $0.id == id }
+        }
+        recordingSurfaceRequest &+= 1   // ask the dashboard to show recording mode
+        toggleRecording()
+    }
+
     func toggleRecording() {
         if isRecording {
             stopRecording()
         } else {
-            guard !isFinalizingPreviousRecording else {
+            guard !isStopping, !isFinalizingPreviousRecording else {
                 statusMessage = "Finalizing previous recording — try again in a moment..."
                 return
             }
@@ -77,7 +132,35 @@ class AppState: ObservableObject {
 
     func openLiveChatPanel() {
         showLiveChatPanel = true
-        guard isRecording else { return }
+    }
+
+    // MARK: - Pre-recording setup
+
+    /// Populate the microphone list so the pre-recording screen can offer a
+    /// picker. Safe to call repeatedly.
+    func refreshInputDevices() {
+        audioCaptureManager.refreshMicList()
+    }
+
+    /// Probe screen-recording permission, which system-audio capture requires.
+    ///
+    /// The first call to `SCShareableContent.current` is what triggers macOS's
+    /// permission prompt, so calling this from the pre-recording screen moves
+    /// that prompt to *before* the meeting starts instead of surfacing it
+    /// mid-recording. Runs off the main actor to match how capture itself
+    /// touches ScreenCaptureKit.
+    func refreshSystemAudioPermission() async {
+        let granted = await Task.detached { () -> Bool in
+            ((try? await SCShareableContent.current) != nil)
+        }.value
+        systemAudioGranted = granted
+    }
+
+    /// Deep-link to System Settings so the user can grant screen recording.
+    func openScreenRecordingSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     func closeLiveChatPanel() {
@@ -92,7 +175,16 @@ class AppState: ObservableObject {
                 ? "Meeting \(startDate.formatted(.dateTime.month().day().hour().minute()))"
                 : meetingTitle.trimmingCharacters(in: .whitespacesAndNewlines)
 
-            let writer = AudioFileWriter(directory: outputDirectory, title: title, date: startDate)
+            // Claim the meeting folder once, up front, uniquified so a second
+            // meeting with the same title on the same day cannot overwrite the
+            // first. Everything this recording produces goes here.
+            let meetingDir = LocalStorage.uniqueMeetingDirectory(
+                title: title, date: startDate, baseDirectory: outputDirectory
+            )
+            try FileManager.default.createDirectory(at: meetingDir, withIntermediateDirectories: true)
+            currentMeetingDirectory = meetingDir
+
+            let writer = AudioFileWriter(directory: meetingDir)
             self.audioFileWriter = writer
 
             audioCaptureManager.onMicAudio = { [weak self] buffer, time in
@@ -130,11 +222,15 @@ class AppState: ObservableObject {
                 writer.writeSystemAudio(sampleBuffer: sampleBuffer)
             }
 
-            await audioCaptureManager.startCapture()
+            try await audioCaptureManager.startCapture()
 
-            if let format = audioCaptureManager.micFormat {
-                try writer.start(format: format)
+            // The writer must be open before we claim to be recording —
+            // otherwise the whole meeting streams into a file that was never
+            // created and the audio is lost with no indication.
+            guard let format = audioCaptureManager.micFormat else {
+                throw AudioCaptureManager.CaptureError.microphoneUnavailable("no input format available")
             }
+            try writer.start(format: format)
 
             recordingStartDate = startDate
             isRecording = true
@@ -147,17 +243,46 @@ class AppState: ObservableObject {
                 }
             }
         } catch {
-            statusMessage = "Failed: \(error.localizedDescription)"
+            // Tear down so a half-started capture doesn't leave the microphone
+            // running with no way to stop it from the UI.
+            await audioCaptureManager.stopCapture()
+            audioFileWriter = nil
+            isRecording = false
+            recordingStartDate = nil
+            timer?.invalidate()
+            timer = nil
+
+            // Release the folder we claimed, so a failed start doesn't leave an
+            // empty directory that pushes the next recording to a `-2` suffix.
+            if let claimed = currentMeetingDirectory {
+                let contents = try? FileManager.default.contentsOfDirectory(atPath: claimed.path)
+                if contents?.isEmpty != false {
+                    try? FileManager.default.removeItem(at: claimed)
+                }
+            }
+            currentMeetingDirectory = nil
+
+            statusMessage = error.localizedDescription
         }
     }
 
     func stopRecording() {
+        // Ignore repeat stop requests once a stop is already underway. Without
+        // this, double/rapid taps spawned overlapping doStopRecording tasks that
+        // tore down the same capture concurrently.
+        guard isRecording, !isStopping else { return }
+        isStopping = true
         Task.detached { [weak self] in
             await self?.doStopRecording()
         }
     }
 
     private func doStopRecording() async {
+        // Release the stop guard once the synchronous teardown returns (capture
+        // stopped, writer finalized). Post-processing continues independently in
+        // its own task, so it's safe to allow a new recording from here on.
+        defer { isStopping = false }
+
         // === Phase 1: Snapshot all per-recording state BEFORE any `await`.
         // This is the race-prevention trick: once we yield, a rapid
         // doStartRecording may overwrite self.audioFileWriter, meetingTitle,
@@ -165,6 +290,8 @@ class AppState: ObservableObject {
         // post-processing sees the meeting that was actually being stopped.
         let writerToFinalize = audioFileWriter
         audioFileWriter = nil
+        let recordingDirectory = currentMeetingDirectory
+        currentMeetingDirectory = nil
 
         let startDate = recordingStartDate ?? Date()
         recordingStartDate = nil
@@ -201,12 +328,41 @@ class AppState: ObservableObject {
         await audioCaptureManager.stopCapture()
         isRecording = false
 
-        let audioURL = writerToFinalize?.stop()
-        lastRecordingAudioURL = audioURL
+        let stopResult = writerToFinalize?.stop()
 
         isFinalizingPreviousRecording = false
 
-        guard let finalAudioURL = audioURL else { return }
+        guard let recordingDirectory else {
+            statusMessage = "Recording failed — no meeting folder was created."
+            return
+        }
+
+        // The title may have been edited while recording (that is what the
+        // recording top bar is for). Bring the folder along so the audio stays
+        // with the transcript and metadata instead of being orphaned.
+        let meetingDir = LocalStorage.reconcileMeetingDirectory(
+            recordingDirectory,
+            toTitle: capturedTitle,
+            date: startDate,
+            baseDirectory: capturedOutputDir
+        )
+
+        // The audio moved with its folder, so re-derive its path.
+        let audioURL = stopResult?.url.map {
+            meetingDir.appendingPathComponent($0.lastPathComponent)
+        }
+        lastRecordingAudioURL = audioURL
+
+        lastRecordingWarning = (stopResult?.systemAudioDropped == true)
+            ? (stopResult?.ffmpegAvailable == false
+                ? "System audio was recorded but couldn't be merged because ffmpeg isn't installed — this meeting has your microphone only. Install ffmpeg in Settings → Setup."
+                : "System audio was recorded but the merge failed — this meeting has your microphone only.")
+            : nil
+
+        guard let finalAudioURL = audioURL else {
+            statusMessage = "No audio was captured — nothing to transcribe."
+            return
+        }
 
         // === Phase 3: Detached post-processing. Transcription, markdown
         // generation, and meeting-store persistence all run in a detached
@@ -219,13 +375,13 @@ class AppState: ObservableObject {
             await previousPostTask?.value
             await self?.runPostRecordingTranscription(
                 audioURL: finalAudioURL,
+                meetingDirectory: meetingDir,
                 startDate: startDate,
                 duration: duration,
                 title: capturedTitle,
                 meetingType: capturedMeetingType,
                 notes: capturedNotes,
                 calendarEventTitle: capturedEventTitle,
-                outputDirectory: capturedOutputDir,
                 captureMode: capturedCaptureMode,
                 liveChatSession: capturedLiveChatSession
             )
@@ -238,13 +394,13 @@ class AppState: ObservableObject {
     @MainActor
     private func runPostRecordingTranscription(
         audioURL: URL,
+        meetingDirectory: URL,
         startDate: Date,
         duration: TimeInterval,
         title: String,
         meetingType: String?,
         notes: String,
         calendarEventTitle: String?,
-        outputDirectory: String,
         captureMode: AudioCaptureManager.CaptureMode,
         liveChatSession: ChatSession
     ) async {
@@ -285,12 +441,10 @@ class AppState: ObservableObject {
             segments: segments
         )
 
-        let meetingDir = LocalStorage.meetingDirectory(
-            title: title, date: startDate, baseDirectory: outputDirectory
-        )
-        lastRecordingMarkdownURL = try? LocalStorage.save(
-            markdown: markdown, title: title, date: startDate, directory: outputDirectory
-        )
+        // Write into the folder this recording already owns — never recompute
+        // it from the title, which is how audio and transcript used to diverge.
+        let meetingDir = meetingDirectory
+        lastRecordingMarkdownURL = try? LocalStorage.save(markdown: markdown, to: meetingDir)
 
         if !notes.isEmpty {
             let notesURL = meetingDir.appendingPathComponent("notes.md")
@@ -320,8 +474,25 @@ class AppState: ObservableObject {
 
     // MARK: - Post-recording actions
 
+    /// Dismiss the post-recording view and ask the dashboard to open this
+    /// meeting's detail page. This is what "View Meeting" invokes: on its own,
+    /// leaving `showPostRecording` true kept the recording view on screen and
+    /// the button appeared to do nothing.
+    func viewCompletedMeeting(_ meeting: LocalMeeting) {
+        showPostRecording = false
+        lastRecordingWarning = nil
+        lastRecordingAudioURL = nil
+        lastRecordingMarkdownURL = nil
+        lastTranscriptSnippet = nil
+        statusMessage = nil
+        meetingToOpen = meeting
+    }
+
     func showMeetingSummary(_ meeting: LocalMeeting) {
         currentMeeting = meeting
+        // The warning belongs to the recording that just finished, not to an
+        // older meeting the user navigated to.
+        lastRecordingWarning = nil
         lastRecordingAudioURL = meeting.hasAudio ? meeting.directoryURL?.appendingPathComponent("audio.wav") : nil
         lastRecordingMarkdownURL = meeting.hasTranscript ? meeting.directoryURL?.appendingPathComponent("transcript.md") : nil
         lastTranscriptSnippet = meeting.transcriptSnippet
@@ -370,15 +541,9 @@ class AppState: ObservableObject {
         lastRecordingAudioURL = nil
         lastRecordingMarkdownURL = nil
         lastTranscriptSnippet = nil
+        lastRecordingWarning = nil
         currentMeeting = nil
         statusMessage = nil
-    }
-
-    private func formatETA(_ seconds: Int) -> String {
-        if seconds < 60 { return "~\(seconds)s" }
-        let min = seconds / 60
-        let sec = seconds % 60
-        return sec > 0 ? "~\(min)m \(sec)s" : "~\(min)m"
     }
 
 }

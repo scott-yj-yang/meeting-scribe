@@ -11,9 +11,12 @@ import Foundation
 ///           .claude/commands/summarize.md
 struct LocalStorage {
 
-    /// Save transcript markdown and return the file URL
-    static func save(markdown: String, title: String, date: Date, directory: String) throws -> URL {
-        let meetingDir = meetingDirectory(title: title, date: date, baseDirectory: directory)
+    /// Save transcript markdown into an already-resolved meeting folder and
+    /// return the file URL.
+    ///
+    /// Takes the folder rather than a title so it cannot disagree with the
+    /// folder the audio was written to.
+    static func save(markdown: String, to meetingDir: URL) throws -> URL {
         try FileManager.default.createDirectory(at: meetingDir, withIntermediateDirectories: true)
 
         let fileURL = meetingDir.appendingPathComponent("transcript.md")
@@ -135,24 +138,95 @@ struct LocalStorage {
     The MeetingScribe app will reload it automatically.
     """
 
-    /// Get the organized directory for a meeting's files
+    /// Like `meetingDirectory`, but guarantees the returned URL does not already
+    /// exist on disk — appending `-2`, `-3`, … when a meeting with the same
+    /// title was already recorded on the same day.
+    ///
+    /// Call this once, when a recording *starts*. Without it, two meetings that
+    /// share a title and a date resolve to the identical folder and the second
+    /// silently overwrites the first's audio, transcript, and metadata.
+    static func uniqueMeetingDirectory(title: String, date: Date, baseDirectory: String) -> URL {
+        let candidate = meetingDirectory(title: title, date: date, baseDirectory: baseDirectory)
+        guard FileManager.default.fileExists(atPath: candidate.path) else { return candidate }
+
+        let parent = candidate.deletingLastPathComponent()
+        let stem = candidate.lastPathComponent
+        var suffix = 2
+        while true {
+            let next = parent.appendingPathComponent("\(stem)-\(suffix)")
+            if !FileManager.default.fileExists(atPath: next.path) { return next }
+            suffix += 1
+        }
+    }
+
+    /// Move a recording's folder so its name reflects `title`, and return the
+    /// folder to use from here on.
+    ///
+    /// A recording's folder is claimed when it *starts*, but the title can be
+    /// edited while it runs (that is what the recording top bar is for). Without
+    /// this reconciliation the audio stays behind in the start-time folder while
+    /// the transcript and metadata are written to a folder named after the final
+    /// title — leaving the audio orphaned in a directory the app cannot see.
+    ///
+    /// No-ops when the name is already correct, and never overwrites another
+    /// meeting: a rename onto a taken name gets a `-2` suffix. Returns the
+    /// original directory unchanged if the move fails, so callers always get a
+    /// usable folder.
+    static func reconcileMeetingDirectory(
+        _ directory: URL,
+        toTitle title: String,
+        date: Date,
+        baseDirectory: String
+    ) -> URL {
+        let desiredName = meetingDirectory(
+            title: title, date: date, baseDirectory: baseDirectory
+        ).lastPathComponent
+        let currentName = directory.lastPathComponent
+
+        if currentName == desiredName { return directory }
+
+        // Already a `-2`/`-3` variant of this same title — keep the suffix
+        // rather than fighting another meeting for the unsuffixed name.
+        if currentName.hasPrefix(desiredName + "-"),
+           Int(currentName.dropFirst(desiredName.count + 1)) != nil {
+            return directory
+        }
+
+        let target = uniqueMeetingDirectory(
+            title: title, date: date, baseDirectory: baseDirectory
+        )
+        do {
+            try FileManager.default.createDirectory(
+                at: target.deletingLastPathComponent(), withIntermediateDirectories: true
+            )
+            try FileManager.default.moveItem(at: directory, to: target)
+            return target
+        } catch {
+            return directory
+        }
+    }
+
+    /// Get the organized directory for a meeting's files.
+    ///
+    /// Date components are computed with an explicit Gregorian calendar and a
+    /// POSIX locale so folder names never shift with the user's region
+    /// settings. (`Calendar.current` under a Japanese calendar would otherwise
+    /// yield year `8`, and `MMMM` under `fr_FR` would yield `mars`.)
     static func meetingDirectory(title: String, date: Date, baseDirectory: String) -> URL {
         let expandedDir = NSString(string: baseDirectory).expandingTildeInPath
         let baseURL = URL(fileURLWithPath: expandedDir)
 
-        let calendar = Calendar.current
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone.current
         let year = calendar.component(.year, from: date)
         let day = calendar.component(.day, from: date)
 
         let monthFormatter = DateFormatter()
+        monthFormatter.locale = Locale(identifier: "en_US_POSIX")
+        monthFormatter.calendar = calendar
+        monthFormatter.timeZone = calendar.timeZone
         monthFormatter.dateFormat = "MM-MMMM"
         let monthStr = monthFormatter.string(from: date)
-
-        let safeTitle = title
-            .replacingOccurrences(of: " ", with: "-")
-            .replacingOccurrences(of: ":", with: "-")
-            .replacingOccurrences(of: "/", with: "-")
-            .lowercased()
 
         let dayStr = String(format: "%02d", day)
 
@@ -160,6 +234,38 @@ struct LocalStorage {
         return baseURL
             .appendingPathComponent("\(year)")
             .appendingPathComponent(monthStr)
-            .appendingPathComponent("\(dayStr)-\(safeTitle)")
+            .appendingPathComponent("\(dayStr)-\(slug(title))")
+    }
+
+    /// Longest allowed byte length for a single path component on APFS/HFS+.
+    private static let maxComponentBytes = 255
+
+    /// Turn an arbitrary meeting title into a safe single path component.
+    ///
+    /// Collapses every run of non-alphanumeric characters into one hyphen, so
+    /// separators, punctuation, newlines, and path traversal characters all
+    /// become harmless. Unicode letters are preserved, so a Japanese or Greek
+    /// title still produces a readable folder rather than `untitled`.
+    static func slug(_ title: String) -> String {
+        var out = ""
+        var pendingHyphen = false
+        for scalar in title.lowercased().unicodeScalars {
+            if CharacterSet.alphanumerics.contains(scalar) {
+                if pendingHyphen && !out.isEmpty { out.append("-") }
+                pendingHyphen = false
+                out.unicodeScalars.append(scalar)
+            } else {
+                pendingHyphen = true
+            }
+        }
+
+        if out.isEmpty { return "untitled" }
+
+        // Reserve room for the `DD-` prefix the caller prepends.
+        let limit = maxComponentBytes - 3
+        while out.utf8.count > limit { out.removeLast() }
+        while out.hasSuffix("-") { out.removeLast() }
+
+        return out.isEmpty ? "untitled" : out
     }
 }

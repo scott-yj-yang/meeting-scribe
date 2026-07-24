@@ -1,26 +1,13 @@
 import Testing
 import Foundation
-import Speech
 @testable import MeetingScribe
 
 @Suite("PermissionsManager")
 struct PermissionsManagerTests {
 
-    @Test("maps SFSpeechRecognizerAuthorizationStatus correctly")
-    @MainActor
-    func mapsSpeechStatus() {
-        let manager = PermissionsManager()
-
-        #expect(manager.mapSpeech(.notDetermined) == .notDetermined)
-        #expect(manager.mapSpeech(.authorized) == .granted)
-        #expect(manager.mapSpeech(.denied) == .denied)
-        #expect(manager.mapSpeech(.restricted) == .denied)
-    }
-
     @Test("PermissionKind.isRequired flags microphone only")
     func requiredPermissionIsMicrophoneOnly() {
         #expect(PermissionKind.microphone.isRequired == true)
-        #expect(PermissionKind.speechRecognition.isRequired == false)
         #expect(PermissionKind.calendar.isRequired == false)
         #expect(PermissionKind.screenRecording.isRequired == false)
     }

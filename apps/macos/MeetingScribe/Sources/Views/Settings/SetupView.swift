@@ -3,9 +3,15 @@ import SwiftUI
 struct SetupView: View {
     @State private var ollamaInstalled = false
     @State private var ollamaServerRunning = false
+    @State private var ffmpegInstalled = false
+
+    @AppStorage("meetingAlertsEnabled") private var meetingAlertsEnabled = true
+    @AppStorage("zoomDetectionEnabled") private var zoomDetectionEnabled = true
+    @AppStorage("meetingAlertLeadMinutes") private var leadMinutes = 2
 
     @State private var installingOllama = false
     @State private var startingOllamaServer = false
+    @State private var installingFFmpeg = false
 
     @State private var installLog = ""
     @State private var showLog = false
@@ -14,6 +20,36 @@ struct SetupView: View {
         Form {
             Section("Transcription") {
                 WhisperSetupView()
+            }
+
+            Section("Audio") {
+                Text("ffmpeg merges your microphone with the system audio from video calls. Without it, recordings capture your voice only.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                dependencyRow(
+                    name: "ffmpeg",
+                    description: "Merges microphone and system audio into one track",
+                    installed: ffmpegInstalled,
+                    installing: installingFFmpeg
+                ) {
+                    installingFFmpeg = true
+                    await runCommand("/opt/homebrew/bin/brew", arguments: ["install", "ffmpeg"])
+                    refreshStatus()
+                    installingFFmpeg = false
+                }
+            }
+
+            Section("Meeting Alerts") {
+                Toggle("Show a prompt before calendar meetings and during Zoom calls",
+                       isOn: $meetingAlertsEnabled)
+                Stepper("Remind me \(leadMinutes) min before",
+                        value: $leadMinutes, in: 1...10)
+                    .disabled(!meetingAlertsEnabled)
+                Toggle("Detect active Zoom meetings",
+                       isOn: $zoomDetectionEnabled)
+                    .disabled(!meetingAlertsEnabled)
             }
 
             Section("Summarization") {
@@ -116,6 +152,7 @@ struct SetupView: View {
         ]
         ollamaInstalled = ollamaPaths.contains(where: { fm.fileExists(atPath: $0) })
             || fm.fileExists(atPath: "/Applications/Ollama.app")
+        ffmpegInstalled = FFmpegLocator.isAvailable
     }
 
     private func refreshOllamaHealth() async {
