@@ -6,6 +6,8 @@ struct NativeDashboard: View {
     @State private var searchText = ""
     @State private var selectedType: String?
     @State private var showRecordingMode = false
+    /// Meeting the user asked to delete from the sidebar, awaiting confirmation.
+    @State private var meetingPendingDeletion: LocalMeeting?
 
     var isRecordingMode: Bool {
         // Note: we intentionally do NOT include `appState.isRecording` here.
@@ -57,6 +59,25 @@ struct NativeDashboard: View {
             selectedMeeting = meeting
             appState.meetingToOpen = nil
         }
+        .alert(
+            "Delete this meeting?",
+            isPresented: Binding(
+                get: { meetingPendingDeletion != nil },
+                set: { if !$0 { meetingPendingDeletion = nil } }
+            ),
+            presenting: meetingPendingDeletion
+        ) { meeting in
+            Button("Cancel", role: .cancel) { meetingPendingDeletion = nil }
+            Button("Delete", role: .destructive) {
+                appState.meetingStore.delete(meeting)
+                if selectedMeeting?.id == meeting.id {
+                    selectedMeeting = nil
+                }
+                meetingPendingDeletion = nil
+            }
+        } message: { meeting in
+            Text("This will permanently remove \"\(meeting.title)\" and all its files (audio, transcript, summary, notes).")
+        }
     }
 
     // MARK: - Viewing Mode
@@ -72,10 +93,9 @@ struct NativeDashboard: View {
                         searchText: searchText,
                         selectedType: selectedType,
                         onDelete: { meeting in
-                            appState.meetingStore.delete(meeting)
-                            if selectedMeeting?.id == meeting.id {
-                                selectedMeeting = nil
-                            }
+                            // Confirm before deleting — deletion removes the
+                            // meeting's files irreversibly.
+                            meetingPendingDeletion = meeting
                         }
                     )
                 }
